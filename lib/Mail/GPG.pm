@@ -1,8 +1,8 @@
 package Mail::GPG;
 
-# $Id: GPG.pm,v 1.9 2004/06/15 20:56:19 joern Exp $
+# $Id: GPG.pm,v 1.10 2004/06/27 21:41:03 joern Exp $
 
-$VERSION = "0.97";
+$VERSION = "0.98";
 
 use strict;
 use IO::Handle;
@@ -958,7 +958,10 @@ sub decrypt {
 	#-- fetch zombie
 	waitpid $pid, 0;
 	my $rc = $? >> 8;
-	die $output_stderr if $rc;
+	#-- don't die here for return values != 0, because
+	#-- this also happens for encrypted+signed mails,
+	#-- where the public key is missing for verification
+	#-- and that's not intended here.
 
 	#-- parse decrypted text
 	my $parser = new MIME::Parser;

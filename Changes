@@ -1,8 +1,16 @@
-$Id: Changes,v 1.6 2004/06/15 20:56:19 joern Exp $
+$Id: Changes,v 1.8 2004/06/27 21:41:12 joern Exp $
 
 Revision history and release notes for Mail::GPG.
 
-0.97 Sat May 29, 2004, joern
+0.98 Sun Jun 27, 2004, joern
+	Bugfixes:
+	- Mail::GPG->decrypt() died on encrypted+signed mails for
+	  which the public key was missing (and thus no verification
+	  possible). That's not what we expect, instead we can check
+	  the verification through the returned result object but
+	  have a successfully decrypted mail.
+
+0.97 Tue Jun 15, 2004, joern
 	Bugfixes:
 	- Mail::GPG::Result->as_string() reported some warnings
 	  regarding uninitialized values. Thanks to Edward J. Sabol
