@@ -1,0 +1,17 @@
+lib/Mail/GPG/Test.pm
+lib/Mail/GPG/Result.pm
+lib/Mail/GPG.pm
+bin/mgpg-test
+t/01.base.t
+t/02.sign.t
+t/03.enc.t
+t/04.big.t
+t/mgpg-test-key.sec.asc
+t/mgpg-test-key.pub.asc
+Makefile.PL
+MANIFEST
+README
+META.yml
+genreadme
+patches/MIME-tools-5.411.enc.txt
+Changes

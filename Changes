@@ -1,0 +1,46 @@
+$Id: Changes,v 1.3 2004/02/15 13:08:58 joern Exp $
+
+Revision history and release notes for Mail::GPG.
+
+0.94 Sun Feb 15, 2004, joern
+	Bugfixes:
+	- new I/O multiplex code needed some adjustments to
+	  work with Perl 5.005_03, because its read() and seek()
+	  functions work on native filehandles only.
+
+0.93 Sat Feb 14 2004, joern
+	Bugfixes:
+	- perform multiplexed I/O with gpg to prevent buffering
+	  deadlocks which may occur with huge amounts of data.
+	  Added a new test t/04.big.t, which creates a 4 MB
+	  entity and signs it. This test takes some time (on
+	  an Athlon 1800XP about 20 seconds), so be patient ;)
+	- set LC_MESSAGES=C where output of gpg is parsed to
+	  get status information. Without this some Mail::GPG
+	  methods didn't work on systems with non english locales.
+
+0.92 Fri Feb 13 2004, joern
+	Bugfixes:
+	- make test failed on systems without the MIME-tools
+	  patch, although the corresponding tests were skipped.
+
+0.91 Wed Feb 11 2004, joern
+	Bugfixes:
+	- mime_sign_encrypt: check key_id only if entity should
+	  be signed
+	- ignore SIGPIPE from gpg
+	
+0.90 Sun Feb 8 2004 joern
+	First public release, including the following methods:
+	- mime_sign
+	- mime_encrypt
+	- mime_sign_encrypt
+	- armor_sign
+	- armor_encrypt
+	- armor_sign_encrypt
+	- decrypt
+	- verify
+	- is_encrypted
+	- is_signed
+	- query_keyring
+	- get_decrypt_key
