@@ -1,4 +1,4 @@
-# $Id: Makefile.PL,v 1.1 2004/02/15 12:31:51 joern Exp $
+# $Id: Makefile.PL,v 1.2 2004/05/29 18:33:51 joern Exp $
 
 use strict;
 
@@ -48,6 +48,7 @@ WriteMakefile(
     	'MIME::Parser'      => 0,
 	'Mail::Address'     => 0,
 	'MIME::QuotedPrint' => 2.20,
+	'GnuPG::Interface'  => 0,
     },
     'EXE_FILES'    => [ 'bin/mgpg-test' ],
     'dist' => {

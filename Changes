@@ -1,6 +1,11 @@
-$Id: Changes,v 1.4 2004/05/29 14:06:44 joern Exp $
+$Id: Changes,v 1.5 2004/05/29 18:33:51 joern Exp $
 
 Revision history and release notes for Mail::GPG.
+
+0.96 Sat May 29, 2004, joern
+	Bugfixes:
+	- added missing dependency GnuPG::Interface in Makefile.PL
+	  Reported through cpan-testers.
 
 0.95 Sat May 29, 2004, joern
 	Features:
