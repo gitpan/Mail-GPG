@@ -13,5 +13,5 @@ MANIFEST
 README
 META.yml
 genreadme
-patches/MIME-tools-5.411.enc.txt
+patches/MIME-tools-5.411.enc.preamble.txt
 Changes

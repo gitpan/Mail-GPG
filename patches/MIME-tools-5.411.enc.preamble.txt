@@ -27,7 +27,16 @@ diff -urN MIME-tools-5.411.orig/lib/MIME/Body.pm MIME-tools-5.411/lib/MIME/Body.
  I<Instance method.>
 diff -urN MIME-tools-5.411.orig/lib/MIME/Entity.pm MIME-tools-5.411/lib/MIME/Entity.pm
 --- MIME-tools-5.411.orig/lib/MIME/Entity.pm	2000-11-06 12:58:53.000000000 +0100
-+++ MIME-tools-5.411/lib/MIME/Entity.pm	2004-02-08 19:11:05.000000000 +0100
++++ MIME-tools-5.411/lib/MIME/Entity.pm	2004-05-29 13:35:36.000000000 +0200
+@@ -1794,7 +1794,7 @@
+ 
+ 	### Preamble:
+ 	my $preamble = join('', @{ $self->preamble || $DefPreamble });
+-	$out->print("$preamble\n") if ($preamble ne '');
++	$out->print("$preamble\n") if ($preamble ne '' or $self->preamble);
+ 
+ 	### Parts:
+ 	my $part;
 @@ -1846,14 +1846,21 @@
      my ($self, $out) = @_;
      $out = wraphandle($out || select);             ### get a printable output

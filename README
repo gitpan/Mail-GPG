@@ -6,7 +6,7 @@ SYNOPSIS
 
       my $mg = Mail::GPG->new;
 
-      my $key_id = $mg->query_keyring (
+      my %keys_id2mail = $mg->query_keyring (
         search => 'joern@zyn.de',
       );
 
@@ -50,6 +50,11 @@ DESCRIPTION
     Mails using GnuPG according to RFC 3156 and RFC 2440, that is OpenPGP
     MIME and traditional armor signed/encrypted mails.
 
+    This module also ships a patch to MIME-tools. Without this patch proper
+    verification of MIME signed messages isn't guaranteed! Refer to the
+    "MIME-tools PATCH" chapter in the documentation for details about this
+    issue.
+
 PREREQUISITES
       Perl              >= 5.00503
       GnuPG::Interface  >= 0.33
@@ -69,7 +74,7 @@ INSTALLATION
     for details):
 
       % cd MIME-tools-5.411
-      % patch -p1 < ../Mail-GPG.x.xx/patches/MIME-tools-5.411.enc.txt
+      % patch -p1 < ../Mail-GPG.x.xx/patches/MIME-tools-5.411.enc.preamble.txt
       % perl Makefile.PL
       % make test
       % make install
@@ -105,8 +110,12 @@ MIME-tools PATCH
     get back the correct encoded version without breaking the signature.
 
     The shipped MIME-tools patch adds the ability of having encoded data in
-    a MIME::Entity object and a method to advise MIME::Parser so use this
+    a MIME::Entity object and a method to advise MIME::Parser to use this
     ability and store the parsed data in encoded form.
+
+    Additionally MIME-tools does not reproduce preambles which consist only
+    of empty lines. This also invalids signatures. E.g. mutt and sylpheed
+    are known to add such empty preambles. The patch fixes this problem.
 
     Mail::GPG generally works without this patch, but it's strongly
     suggested that you apply it. Otherwise you have no guarantee that MIME
@@ -145,6 +154,11 @@ KNOWN BUGS
 
 AUTHOR
     Joern Reder <joern AT zyn.de>
+
+CONTACT
+    You can contact me by email. Please place the module name "Mail::GPG"
+    somewhere in the subject, because I filter my mails that way. I'm a
+    native German speaker, but can contact me in english as well.
 
 COPYRIGHT
     Copyright (C) 2004 by Joern Reder, All Rights Reserved.

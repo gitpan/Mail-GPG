@@ -1,6 +1,6 @@
 package Mail::GPG::Result;
 
-# $Id: Result.pm,v 1.2 2004/02/15 12:32:58 joern Exp $
+# $Id: Result.pm,v 1.3 2004/05/29 14:06:06 joern Exp $
 
 use strict;
 
@@ -8,10 +8,13 @@ sub get_is_encrypted		{ shift->{is_encrypted}			}
 sub get_enc_ok			{ shift->{enc_ok}			}
 sub get_enc_key_id		{ shift->{enc_key_id}			}
 sub get_enc_mail		{ shift->{enc_mail}			}
+
 sub get_is_signed		{ shift->{is_signed}			}
 sub get_sign_ok			{ shift->{sign_ok}			}
 sub get_sign_key_id		{ shift->{sign_key_id}			}
 sub get_sign_mail		{ shift->{sign_mail}			}
+sub get_sign_mail_aliases	{ shift->{sign_mail_aliases}		}
+
 sub get_gpg_stdout		{ shift->{gpg_stdout}			}
 sub get_gpg_stderr		{ shift->{gpg_stderr}			}
 sub get_gpg_rc			{ shift->{gpg_rc}			}
@@ -23,26 +26,51 @@ sub new {
 	@par{'enc_key_id','enc_mail','sign_key_id','sign_mail'};
 	my  ($gpg_stdout, $gpg_stderr, $gpg_rc, $sign_ok, $enc_ok) =
 	@par{'gpg_stdout','gpg_stderr','gpg_rc','sign_ok','enc_ok'};
-	my  ($is_signed, $is_encrypted) =
-	@par{'is_signed','is_encrypted'};
+	my  ($is_signed, $is_encrypted, $sign_mail_aliases) =
+	@par{'is_signed','is_encrypted','sign_mail_aliases'};
 
-	$gpg_stdout = \"" if not defined $gpg_stdout;
-	$gpg_stderr = \"" if not defined $gpg_stderr;
+	#-- by default extract attributes from gpg's stderr output
+	if ( $gpg_stderr ) {
+	    $is_signed   = ($$gpg_stderr =~ /signature made/i)||0
+	    		   if !defined $is_signed;
+	    $sign_ok     = ($$gpg_stderr =~ /good signature/i)||0
+	    		   if !defined $sign_ok;
+	    $sign_key_id = ($$gpg_stderr =~ /signature made.*?key.*?id (\w+)/i)[0]||""
+	    		   if !defined $sign_key_id;
+	    $sign_mail   = ($$gpg_stderr =~ /signature from "(.*?)"/i)[0]||""
+	    		   if !defined $sign_mail;
+	    $enc_key_id  = ($$gpg_stderr =~ /encrypted with.*?key.*?id (\w+)/i)[0]||""
+	    		   if !defined $enc_key_id;
+	    $enc_mail    = ($$gpg_stderr =~ /encrypted.*?\n.*?"(.*?)"/i)[0]||""
+	    		   if !defined $enc_mail;
+
+	    if ( !defined $sign_mail_aliases ) {
+	        my @sign_mail_aliases = $$gpg_stderr =~ /^gpg:\s+aka\s+"(.*?)"/mg;
+		$sign_mail_aliases = \@sign_mail_aliases;
+	    }
+	}
+
+	#-- initialize reference attributes to prevent
+	#-- dereferencing undef errors
+	$gpg_stdout        = \"" if not defined $gpg_stdout;
+	$gpg_stderr        = \"" if not defined $gpg_stderr;
+	$sign_mail_aliases = []  if not defined $sign_mail_aliases;
 
 	my $self = bless {
-		enc_ok		=> $enc_ok,
-		enc_key_id	=> $enc_key_id,
-		enc_mail	=> decode($enc_mail),
-		sign_ok		=> $sign_ok,
-		sign_key_id	=> $sign_key_id,
-		sign_mail	=> decode($sign_mail),
-		gpg_stdout	=> $gpg_stdout,
-		gpg_stderr	=> $gpg_stderr,
-		gpg_rc		=> $gpg_rc,
-		is_signed	=> $is_signed,
-		is_encrypted	=> $is_encrypted,
+		enc_ok		  => $enc_ok,
+		enc_key_id	  => $enc_key_id,
+		enc_mail	  => decode($enc_mail),
+		sign_ok		  => $sign_ok,
+		sign_key_id	  => $sign_key_id,
+		sign_mail	  => decode($sign_mail),
+		gpg_stdout	  => $gpg_stdout,
+		gpg_stderr	  => $gpg_stderr,
+		gpg_rc		  => $gpg_rc,
+		is_signed	  => $is_signed,
+		is_encrypted	  => $is_encrypted,
+		sign_mail_aliases => $sign_mail_aliases,
 	}, $class;
-	
+
 	return $self;
 }
 
@@ -61,20 +89,27 @@ sub as_string {
 	my ($method, $string);
 	foreach my $attr (qw (is_encrypted enc_ok enc_key_id enc_mail
 			      is_signed sign_ok sign_key_id sign_mail
+			      sign_mail_aliases
 			      gpg_rc )) {
+	    if ( $attr eq 'sign_mail_aliases' ) {
+		foreach my $alias ( @{$self->get_sign_mail_aliases} ) {
+		    $string .= sprintf ("%-16s: %s\n", "sign_mail_alias", $alias);
+		}
+	    } else {
 		$method = "get_$attr";
-		$string .= sprintf ("%-13s: %s\n", $attr, $self->$method());
+		$string .= sprintf ("%-16s: %s\n", $attr, $self->$method());
+	    }
 	}
 
 	my $stdout = ${$self->get_gpg_stdout};
 	my $stderr = ${$self->get_gpg_stderr};
 
-	$stdout =~ s/\n/\n               /g;
-	$stderr =~ s/\n/\n               /g;
+	$stdout =~ s/\n/\n                  /g;
+	$stderr =~ s/\n/\n                  /g;
 
-	$string .= sprintf ("%-13s: %s\n", "gpg_stdout", $stdout)
+	$string .= sprintf ("%-16s: %s\n", "gpg_stdout", $stdout)
 		if not $no_stdout;
-	$string .= sprintf ("%-13s: %s\n", "gpg_stderr", $stderr);
+	$string .= sprintf ("%-16s: %s\n", "gpg_stderr", $stderr);
 
 	return $string;
 }
@@ -131,19 +166,20 @@ Mail::GPG::Result - Mail::GPG decryption and verification results
   $long_string  = $result->as_string ( ... );
   $short_string = $result->as_short_string;
 
-  $encrypted         = $result->get_is_encrypted;
-  $decryption_ok     = $result->get_enc_ok;
-  $encryption_key_id = $result->get_enc_key_id;
-  $encryption_mail   = $result->get_enc_mail;
+  $encrypted           = $result->get_is_encrypted;
+  $decryption_ok       = $result->get_enc_ok;
+  $encryption_key_id   = $result->get_enc_key_id;
+  $encryption_mail     = $result->get_enc_mail;
 
-  $signed            = $result->get_is_signed;
-  $signature_ok      = $result->get_sign_ok;
-  $signed_key        = $result->get_sign_key_id;
-  $signed_mail       = $result->get_sign_mail;
+  $signed              = $result->get_is_signed;
+  $signature_ok        = $result->get_sign_ok;
+  $signed_key          = $result->get_sign_key_id;
+  $signed_mail         = $result->get_sign_mail;
+  $signed_mail_aliases = $result->get_sign_mail_aliases;
 
-  $stdout_sref       = $result->get_gpg_stdout;
-  $stderr_sref       = $result->get_gpg_stderr;
-  $gpg_exit_code     = $result->get_gpg_rc;
+  $stdout_sref         = $result->get_gpg_stdout;
+  $stderr_sref         = $result->get_gpg_stderr;
+  $gpg_exit_code       = $result->get_gpg_rc;
 
 =head1 DESCRIPTION
 
@@ -189,7 +225,11 @@ The key ID of the sender who signed an entity.
 
 =item B<sign_mail>
 
-The mail address of the sender who signed an entity.
+The primary mail address of the sender who signed an entity.
+
+=item B<sign_mail_aliases>
+
+A reference to a list of the signer's mail alias addresses.
 
 =item B<gpg_stdout>
 
@@ -211,9 +251,7 @@ There are only two methods, both are for debugging purposes:
 
 =head2 as_string
 
-  $string = $result->as_string (
-    no_stdout => $no_stdout,
-  );
+  $string = $result->as_string ( no_stdout => $no_stdout )
 
 Returns a printable string version of the object.
 

@@ -37,7 +37,7 @@ SKIP: {
 		search => $test->get_key_mail,
 	);
 
-	ok ($key_id eq $test->get_key_id, "Key ID retrieved");
+	ok ($key_id eq $test->get_key_id, "Key ID query");
 
 	foreach my $invalid ( 0, 1 ) {
 	    foreach my $encoding ( qw( base64 quoted-printable ) ) {

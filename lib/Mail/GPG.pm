@@ -1,8 +1,8 @@
 package Mail::GPG;
 
-# $Id: GPG.pm,v 1.5 2004/02/15 13:23:10 joern Exp $
+# $Id: GPG.pm,v 1.7 2004/05/29 14:05:22 joern Exp $
 
-$VERSION = "0.94";
+$VERSION = "0.95";
 
 use strict;
 use IO::Handle;
@@ -171,21 +171,6 @@ sub check_encryption {
 	return $is_armor;
 }
 
-sub set_c_locale {
-	my $self = shift;
-	my $LC_MESSAGES = $ENV{LC_MESSAGES};
-	$ENV{LC_MESSAGES} = 'C';
-	$self->{_LC_MESSAGES} = $LC_MESSAGES;
-	1;
-}
-
-sub reset_locale {
-	my $self = shift;
-	$ENV{LC_MESSAGES} = $self->{_LC_MESSAGES}
-		if defined $self->{_LC_MESSAGES};
-	1;
-}
-
 sub perform_multiplexed_gpg_io {
 	my $self = shift;
 	my %par = @_;
@@ -265,10 +250,13 @@ sub query_keyring {
 	#-- early before we fed our data into it.
 	local $SIG{PIPE} = 'IGNORE';
 
+	#-- we parse gpg's output and rely on english
+	local $ENV{LC_ALL} = "C";
+
 	#-- get a GnuPG::Interface
 	my $gpg = $self->new_gpg_interface;
 
-	#-- initialize Handless
+	#-- initialize Handles
 	my $stdout  = IO::Handle->new;
 	my $stderr  = IO::Handle->new;
 	my $handles = GnuPG::Handles->new (
@@ -296,25 +284,36 @@ sub query_keyring {
 	#-- wait on gpg exit
 	waitpid $pid, 0;
 
-	#-- grab key ID and email from output
-	my ($pub_line) = ($output_stdout =~ m!^(pub:.*)$!m);
-	my @fields = split(":", $pub_line);
-	my ($key_id, $key_mail) = @fields[4,9];
-	($key_id) = ($key_id =~ /(........)$/);
+	#-- needed for utf8 handling
+	require Encode if $] >= 5.008;
 
-	#-- $key_mail is quoted C-style (\x3a is a colon)
-	#-- and UTF8 encoded
-	$key_mail =~ s/\\x(..)/chr(hex($1))/eg;
+	#-- grab key ID's and emails from output
+	my @result;
+	while ( $output_stdout =~ m!^pub:[^:]*:[^:]*:[^:]*:([^:]*):[^:]*:
+				         [^:]*:[^:]*:[^:]*:([^:]*)!mgx ) {
+		#-- Field 4 and 9 are key-ID and email address
+		my ($key_id, $key_mail) = ($1, $2);
 
-	#-- Tell Perl that this variable is utf8 encoded
-	eval {
-		require Encode;
-		Encode::_utf8_on($key_mail);
-	};
+		#-- We need only the last 8 characters from the key-ID
+		($key_id) = ($key_id =~ /(........)$/);
 
-	#-- return key ID (or undef, if no matching key found)
-	return $key_id if not wantarray;
-	return ($key_id, $key_mail);
+		#-- $key_mail is quoted C-style (e.g. \x3a is a colon)
+		$key_mail =~ s/\\x(..)/chr(hex($1))/eg;
+
+		#-- tell Perl that this variable is utf8 encoded
+		#-- (if Perl version is 5.8.0 or greater)
+		Encode::_utf8_on($key_mail) if $] >= 5.008;
+
+		#-- fill result array
+		push @result, $key_id, $key_mail;
+	}
+
+	#-- return result: undef if nothing found, first key-id if
+	#-- a scalar is requested, all entries suitable for a hash
+	#-- slurp if an array is requested
+	return if not @result;
+	return $result[0] if not wantarray;
+	return @result;
 }
 
 sub build_rfc3156_multipart_entity {
@@ -410,6 +409,9 @@ sub mime_sign {
 	#-- ignore any PIPE signals, in case of gpg exited
 	#-- early before we fed our data into it.
 	local $SIG{PIPE} = 'IGNORE';
+
+	#-- we parse gpg's output and rely on english
+	local $ENV{LC_ALL} = "C";
 
 	#-- get default key ID and passphrase, if not given
 	$key_id     = $self->get_default_key_id     if not defined $key_id;
@@ -528,6 +530,9 @@ sub mime_sign_encrypt {
 	#-- ignore any PIPE signals, in case of gpg exited
 	#-- early before we fed our data into it.
 	local $SIG{PIPE} = 'IGNORE';
+
+	#-- we parse gpg's output and rely on english
+	local $ENV{LC_ALL} = "C";
 
 	#-- get default key ID and passphrase, if not given
 	$key_id     = $self->get_default_key_id     if not defined $key_id;
@@ -650,6 +655,9 @@ sub armor_sign {
 	#-- early before we fed our data into it.
 	local $SIG{PIPE} = 'IGNORE';
 
+	#-- we parse gpg's output and rely on english
+	local $ENV{LC_ALL} = "C";
+
 	#-- get default key ID and passphrase, if not given
 	$key_id     = $self->get_default_key_id     if not defined $key_id;
 	$passphrase = $self->get_default_passphrase if not defined $passphrase;
@@ -766,6 +774,9 @@ sub armor_sign_encrypt {
 	#-- ignore any PIPE signals, in case of gpg exited
 	#-- early before we fed our data into it.
 	local $SIG{PIPE} = 'IGNORE';
+
+	#-- we parse gpg's output and rely on english
+	local $ENV{LC_ALL} = "C";
 
 	#-- get default key ID and passphrase, if not given
 	if ( not $_no_sign ) {
@@ -888,6 +899,9 @@ sub decrypt {
 	#-- early before we fed our data into it.
 	local $SIG{PIPE} = 'IGNORE';
 
+	#-- we parse gpg's output and rely on english
+	local $ENV{LC_ALL} = "C";
+
 	#-- get default passphrase, if not given
 	$passphrase = $self->get_default_passphrase if not defined $passphrase;
 
@@ -915,9 +929,7 @@ sub decrypt {
 	);
 
 	#-- start gpg for decryption
-	$self->set_c_locale;
 	my $pid = $gpg->decrypt ( handles => $handles );
-	$self->reset_locale;
 
 	#-- put encoded entity data into temporary file
 	#-- (faster than in-memory operation)
@@ -989,14 +1001,8 @@ sub decrypt {
 	#-- fetch information from gpg's stderr output
 	#-- and construct a Mail::GPG::Result object from it
 	my $result = Mail::GPG::Result->new (
-		is_signed    => ($output_stderr =~ /signature made/i)||0,
-		sign_ok	     => ($output_stderr =~ /good signature/i)||0,
-		sign_key_id  => ($output_stderr =~ /signature made.*?key.*?id (\w+)/i)[0]||"",
-		sign_mail    => ($output_stderr =~ /signature from "(.*?)"/i)[0]||"",
 		is_encrypted => 1,
 		enc_ok       => ($output_stdout ne ''),
-		enc_key_id   => ($output_stderr =~ /encrypted with.*?key.*?id (\w+)/i)[0]||"",
-		enc_mail     => ($output_stderr =~ /encrypted.*?\n.*?"(.*?)"/i)[0]||"",
 		gpg_stdout   => \$output_stdout,
 		gpg_stderr   => \$output_stderr,
 		gpg_rc	     => $rc,
@@ -1015,6 +1021,9 @@ sub verify {
 	#-- ignore any PIPE signals, in case of gpg exited
 	#-- early before we fed our data into it.
 	local $SIG{PIPE} = 'IGNORE';
+
+	#-- we parse gpg's output and rely on english
+	local $ENV{LC_ALL} = "C";
 
 	#-- check if the entity is signed
 	my ($signed_text, $signature_text);
@@ -1060,7 +1069,6 @@ sub verify {
 	#-- distinguish between ascii amor embedded signature
 	#-- and detached signature (RFC 3156)
 	my ($pid, $sign_file, $sign_fh);
-	$self->set_c_locale;
 	if ( $signature_text ) {
 		#-- signature is detached, save it to a temp file
 		($sign_fh, $sign_file) = File::Temp::tempfile();
@@ -1079,7 +1087,6 @@ sub verify {
 			handles => $handles,
 		);
 	}
-	$self->reset_locale;
 
 	#-- put encoded entity data into temporary file
 	#-- (faster than in-memory operation)
@@ -1124,8 +1131,6 @@ sub verify {
 	my $result = Mail::GPG::Result->new (
 		is_signed   => 1,
 		sign_ok	    => !$rc,
-		sign_key_id => ($output_stderr =~ /key\s+id\s+(\w+)/i)[0]||"",
-		sign_mail   => ($output_stderr =~ /from\s+"(.*?)"/i)[0]||"",
 		gpg_stdout  => \$output_stdout,
 		gpg_stderr  => \$output_stderr,
 		gpg_rc	    => $rc,
@@ -1190,6 +1195,9 @@ sub get_decrypt_key {
 	#-- early before we fed our data into it.
 	local $SIG{PIPE} = 'IGNORE';
 
+	#-- we parse gpg's output and rely on english
+	local $ENV{LC_ALL} = "C";
+
 	#-- check if the entity is encrypted at all
 	#-- (dies if not)
 	my $encrypted_text;
@@ -1212,13 +1220,11 @@ sub get_decrypt_key {
 	);
 
 	#-- start gpg for decryption
-	$self->set_c_locale;
 	my $pid = $gpg->wrap_call(
 		handles      => $handles,
 		commands     => [ "--decrypt", "--batch", "--list-only",
 				  "--status-fd", "1"  ],
 	);
-	$self->reset_locale;
 
 	#-- put encoded entity data into temporary file
 	#-- (faster than in-memory operation)
@@ -1265,9 +1271,7 @@ sub get_decrypt_key {
 
 	#-- get mail address of this key
 	my $key_mail;
-	($key_id, $key_mail) = $self->query_keyring (
-		search => $key_id,
-	);
+	($key_id, $key_mail) = $self->query_keyring ( search => $key_id );
 
 	return $key_id if not wantarray;
 	return ($key_id, $key_mail);
@@ -1302,7 +1306,7 @@ Mail::GPG - Handling of GnuPG encrypted / signed mails
 
   my $mg = Mail::GPG->new;
 
-  my $key_id = $mg->query_keyring (
+  my %keys_id2mail = $mg->query_keyring (
     search => 'joern@zyn.de',
   );
 
@@ -1347,6 +1351,11 @@ This Perl modules handles all the details of encrypting and
 signing Mails using GnuPG according to RFC 3156 and RFC 2440,
 that is OpenPGP MIME and traditional armor signed/encrypted mails.
 
+This module also ships a patch to MIME-tools. Without this patch
+proper verification of MIME signed messages isn't guaranteed!
+Refer to the "MIME-tools PATCH" chapter in the documentation for
+details about this issue.
+
 =head1 PREREQUISITES
 
   Perl              >= 5.00503
@@ -1369,7 +1378,7 @@ works without this patch, but it's strongly suggested,
 that you apply it. Refer to the next chapter for details):
 
   % cd MIME-tools-5.411
-  % patch -p1 < ../Mail-GPG.x.xx/patches/MIME-tools-5.411.enc.txt
+  % patch -p1 < ../Mail-GPG.x.xx/patches/MIME-tools-5.411.enc.preamble.txt
   % perl Makefile.PL
   % make test
   % make install
@@ -1408,7 +1417,12 @@ version without breaking the signature.
 
 The shipped MIME-tools patch adds the ability of having encoded
 data in a MIME::Entity object and a method to advise MIME::Parser
-so use this ability and store the parsed data in encoded form.
+to use this ability and store the parsed data in encoded form.
+
+Additionally MIME-tools does not reproduce preambles which consist
+only of empty lines. This also invalids signatures. E.g. mutt and
+sylpheed are known to add such empty preambles. The patch fixes
+this problem.
 
 Mail::GPG generally works without this patch, but it's
 B<strongly suggested> that you apply it. Otherwise you have
@@ -1897,18 +1911,22 @@ The entity to inspect.
 
 =head2 query_keyring
 
-  ($key_id, $key_mail) = $mg->query_keyring (
-      search => $search,
-  );
+  %result              = $mg->query_keyring ( search => $search );
+  $key_id              = $mg->query_keyring ( search => $search );
+  ($key_id, $key_mail) = $mg->query_keyring ( search => $search );
 
-Searches the keyring for a key id or email address
-and returns key id and mail address of the first
-matching entry. If you need more detailed control
-about the query result, use GnuPG::Interface->get_public_keys
-and GnuPG::Interface->get_secret_keys instead. For
+Searches the keyring for a key id or email address.
+In list context a subsequent list of key id and mail
+address pairs (suitable for a hash variable) is returned.
+In scalar context the key id of the first entry is returned.
+If nothing was found undef is returned.
+
+If you need more detailed control about the query result,
+use GnuPG::Interface->get_public_keys and
+GnuPG::Interface->get_secret_keys instead. For
 details refer to the GnuPG::PrimaryKey manpage.
 
-If you use Perl 5.8.0 or better the email address will
+If you use Perl 5.8.0 or better email addresses will
 be returned as an utf8 enabled scalar, because gpg always
 lists email adresses in utf8. Since Perl > 5.8.0 handles
 utf8 very nice and transparently, you mostly don't need
@@ -1928,6 +1946,13 @@ Key id or email address to query for.
 =head1 AUTHOR
 
 Joern Reder <joern AT zyn.de>
+
+=head1 CONTACT
+
+You can contact me by email. Please place the module name
+"Mail::GPG" somewhere in the subject, because I filter
+my mails that way. I'm a native German speaker, but
+can contact me in english as well.
 
 =head1 COPYRIGHT
 
