@@ -1,10 +1,11 @@
 package Mail::GPG;
 
-# $Id: GPG.pm,v 1.10 2004/06/27 21:41:03 joern Exp $
+# $Id: GPG.pm,v 1.11 2004/11/20 11:25:58 joern Exp $
 
-$VERSION = "0.98";
+$VERSION = "1.0.0";
 
 use strict;
+use Carp;
 use IO::Handle;
 use GnuPG::Interface;
 use MIME::Parser;
@@ -159,7 +160,9 @@ sub check_encryption {
 
 	} elsif ( $entity->bodyhandle ) {
 		#-- probably an ASCII armor encrypted entity
-		$$encrypted_text_sref = $entity->body_as_string;
+		#-- (we need the *decoded* data here - hopefully the
+		#--  MIME::Parser had decode_body(1) set).
+		$$encrypted_text_sref = $entity->bodyhandle->as_string;
 		die "Entity is not OpenPGP encrypted"
 		    unless
 			$$encrypted_text_sref =~ /^-----BEGIN PGP MESSAGE-----/m;
@@ -1296,6 +1299,44 @@ sub extract_mail_address {
 	return \@recipients;
 }
 
+sub parse {
+	my $thing = shift;
+	my %par = @_;
+	my ($mail_fh, $mail_sref) = @par{'mail_fh','mail_sref'};
+	
+	croak "Specify mail_fh xor mail_sref" 
+		unless $mail_fh xor $mail_sref;
+
+	require MIME::Parser;
+	my ($parser, $entity);
+
+	#-- First parse without body decoding, which is correct
+	#-- for MIME messages
+	$parser = MIME::Parser->new;
+	$parser->decode_bodies(0);
+	$entity = $mail_fh ? 
+		$parser->parse($mail_fh):
+		$parser->parse_data($$mail_sref);
+
+	#-- Ok, if this is a MIME message
+	return $entity
+		if $entity->effective_type eq 'multipart/signed' or
+		   $entity->effective_type eq 'multipart/encrypted';
+
+	#-- Now with body decoding, which is MIME::Parser's default
+	#-- and correct for OpenPGP armor message. Probably this
+	#-- isn't an OpenPGP message at all. But also in that case
+	#-- it's the best to return a decoded entity, as MIME::Parser
+	#-- usually does.
+	seek ($mail_fh, 0, 0) if $mail_fh;
+	$parser->decode_bodies(1);
+	$entity = $mail_fh ? 
+		$parser->parse($mail_fh):
+		$parser->parse_data($$mail_sref);
+
+	return $entity;
+}
+
 __END__
 
 
@@ -1339,6 +1380,8 @@ Mail::GPG - Handling of GnuPG encrypted / signed mails
   $mg->armor_sign ( ... );
   $mg->armor_encrypt ( ... );
   $mg->armor_sign_encrypt ( ... );
+
+  $mg->parse ( ... );
 
   $mg->decrypt ( ... );
   $mg->verify ( ... );
@@ -1571,7 +1614,7 @@ if the 'gpg' program is not in your PATH.
 
 =back
 
-=head1 METHODS FOR MIME OpenPGP (RFC 3156)
+=head1 METHODS TO CREATE MIME OpenPGP MESSAGES (RFC 3156)
 
 =head2 mime_sign
 
@@ -1676,7 +1719,7 @@ B<default_passphrase> if omitted here.
 
 =back
 
-=head1 METHODS FOR ARMOR OpenPGP 
+=head1 METHODS TO CREATE ARMOR OpenPGP MESSAGES (RFC 2440)
 
 =head2 armor_sign
 
@@ -1769,7 +1812,73 @@ B<default_passphrase> if omitted here.
 
 =back
 
-=head1 METHODS FOR DECRYPTION AND VERIFICATION
+=head1 METHODS FOR PARSING, DECRYPTION AND VERIFICATION
+
+=head2 parse
+
+  $entity = Mail::GPG->parse (
+      mail_fh   => $filehandle,
+    | mail_sref => \$mail_data
+  );
+
+This is a convenience method for parsing a mail message. It
+uses MIME::Parser and distinguish between MIME and non-MIME messages,
+doing the right thing regarding reading decoded or encoded
+bodies.
+
+=over 4
+
+=item mail_fh
+
+An opened filehandle of the mail message in question.
+
+=item mail_sref
+
+A reference to a scalar holding the mail message to be parsed.
+
+=back
+
+=head2 Details about parsing with MIME::Parser for Mail::GPG
+
+Parsing is not trivial, because we have a basic problem with
+MIME::Parser and MIME::Entity. If the mail in question is
+text/plain and contains an ASCII armor PGP message, Mail::GPG
+must see the B<decoded> data.
+
+But if it's a MIME PGP message, Mail::GPG needs the
+B<encoded> data.
+
+With the shipped MIME-tools patch you can advice MIME::Parser
+to create an encoded entity (be default it creates decoded
+entities and encodes them on demand). You can activate this
+transparent encoding mode with the B<decode_bodies>
+attribute of MIME::Parser, which defaults to 1:
+
+  $parser = MIME::Parser->new;
+  $parser->decode_bodies(0);
+
+So you need to set decode_bodies(0) for MIME  messages
+and keep the default of decode_bodies(1) for armor
+messages. But how can you know in advance which is right
+without having the entity parsed already? You can't!
+
+One possible solution is to parse the entity twice if it's
+MIME, and keep the decoded version from the first
+parse run otherwise, or you do some quick analysis on the
+data in question, without really parsing it.
+
+  $parser = MIME::Parser->new;
+  $parser->decode_bodies(0);
+  $entity = $parser->parse_data($mail_data);
+  if ( $entity->effective_type ne 'multipart/signed' and
+       $entity->effective_type ne 'multipart/encrypted' ) {
+    $parser->decode_bodies(1);
+    $entity = $parser->parse_data($mail_data);
+  }
+
+That's exactly what the parse() method does for you, so
+it's a good idea to use it instead of fiddling with all
+the details yourself ;)
 
 =head2 decrypt
 
@@ -1778,7 +1887,7 @@ B<default_passphrase> if omitted here.
     [ passphrase => $passphrase ]
   );
 
-Retuns the decrypted version of an entity and a Mail::GPG::Result
+Returns the decrypted version of an entity and a Mail::GPG::Result
 object with detailed information about the entities encryption
 (refer to the manpage of Mail::GPG::Result).
 
@@ -1786,11 +1895,8 @@ object with detailed information about the entities encryption
 
 =item entity
 
-The MIME::Entity to be decrypted.
-
-B<Important>: if you got this MIME::Entity from MIME::Parser,
-make sure that you set $parser->decode_bodies(0) before
-parsing the mail. Otherwise it's likely that decryption fails.
+The MIME::Entity to be decrypted. Please read the chapter
+about the parse() method of details about this entity.
 
 =item passphrase
 
@@ -1815,47 +1921,8 @@ Mail::GPG::Result.
 
 =item entity
 
-The signed MIME::Entity to be verified.
-
-B<Important>: unfortunately we have a problem here with
-MIME::Parser and MIME::Entity. If the mail in question
-is text/plain and contains an ASCII armor signed PGP message,
-Mail::GPG must see the B<decoded> data.
-
-But if it's a MIME PGP signed message, Mail::GPG needs the
-B<encoded> data.
-
-With the shipped MIME-tools patch you can advice MIME::Parser
-to create an encoded entity (be default it creates decoded
-entities and encodes them on demand). You can activate this
-transparent encoding mode with the B<decode_bodies>
-attribute of MIME::Parser, which defaults to 1:
-
-  $parser = MIME::Parser->new;
-  $parser->decode_bodies(0);
-
-So you need to set decode_bodies(0) for MIME signed messages
-and keep the default of decode_bodies(1) for armor signed
-messages. But how can you know in advance which is right
-without having the entity parsed already? You can't!
-
-One possible solution is to parse the entity twice if it's
-MIME signed, and keep the decoded version from the first
-parse run otherwise, or you do some quick analysis on the
-data in question, without really parsing it.
-
-  $parser = MIME::Parser->new;
-  $parser->decode_bodies(0);
-  $entity = $parser->parse_data($mail_data);
-  if ( $entity->effective_type eq 'multipart/signed' ) {
-    $parser->decode_bodies(0);
-    $entity = $parser->parse_data($mail_data);
-  }
-
-I know this is a bad thing, but a conceptional problem with
-MIME::Parser and MIME::Entity. It's Ok for most situations
-that they store decoded data, but for our purpose it's bad.
-That's the way it is.
+The signed MIME::Entity to be verified. Please read the chapter
+about the parse() method of details about this entity.
 
 =back
 
@@ -1954,7 +2021,7 @@ Joern Reder <joern AT zyn.de>
 
 You can contact me by email. Please place the module name
 "Mail::GPG" somewhere in the subject, because I filter
-my mails that way. I'm a native German speaker, but
+my mails that way. I'm a native German speaker, but you
 can contact me in english as well.
 
 =head1 COPYRIGHT

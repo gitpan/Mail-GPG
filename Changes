@@ -1,6 +1,18 @@
-$Id: Changes,v 1.8 2004/06/27 21:41:12 joern Exp $
+$Id: Changes,v 1.9 2004/11/20 11:26:14 joern Exp $
 
 Revision history and release notes for Mail::GPG.
+
+1.0.0 Sat Nov 20, 2004, joern
+	Features:
+	- new parse() convenience method for parsing a mail message.
+	  It uses MIME::Parser and distinguish between MIME and
+	  non-MIME messages, doing the right thing regarding reading
+	  decoded or encoded bodies.
+	
+	Bugfixes:
+	- decrypt(): used encoded entity instead of decoded in case
+	  of a MIME message. Thanks for the report to Paul Murphy
+	  <pmurphy AT ionixpharma.com>.
 
 0.98 Sun Jun 27, 2004, joern
 	Bugfixes:

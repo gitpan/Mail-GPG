@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $Id: mgpg-test,v 1.5 2004/06/27 21:40:19 joern Exp $
+# $Id: mgpg-test,v 1.6 2004/11/20 11:26:08 joern Exp $
 
 use strict;
 use lib 'lib';
@@ -36,13 +36,9 @@ main: {
 sub test_file {
 	my ($fh, $verbose, $dump) = @_;
 
-	#-- create MIME::Parser and tell it to keep
-	#-- bodies encoded!
-	my $parser = MIME::Parser->new;
-	$parser->decode_bodies(0);
-
-	#-- parse file
-	my $entity = $parser->parse($fh);
+	my $entity = Mail::GPG->parse (
+		mail_fh => $fh
+	);
 
 	#-- extract subject and sender (just for output)
 	my $subject = substr($entity->head->get("subject"), 0, 35);
