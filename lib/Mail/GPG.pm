@@ -1,8 +1,8 @@
 package Mail::GPG;
 
-# $Id: GPG.pm,v 1.8 2004/05/29 18:33:51 joern Exp $
+# $Id: GPG.pm,v 1.9 2004/06/15 20:56:19 joern Exp $
 
-$VERSION = "0.96";
+$VERSION = "0.97";
 
 use strict;
 use IO::Handle;

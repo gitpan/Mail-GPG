@@ -1,6 +1,13 @@
-$Id: Changes,v 1.5 2004/05/29 18:33:51 joern Exp $
+$Id: Changes,v 1.6 2004/06/15 20:56:19 joern Exp $
 
 Revision history and release notes for Mail::GPG.
+
+0.97 Sat May 29, 2004, joern
+	Bugfixes:
+	- Mail::GPG::Result->as_string() reported some warnings
+	  regarding uninitialized values. Thanks to Edward J. Sabol
+	  <sabol AT alderaan.gsfc.nasa.gov> for his patch.
+	- mgpg-test script now has the -w switch
 
 0.96 Sat May 29, 2004, joern
 	Bugfixes:

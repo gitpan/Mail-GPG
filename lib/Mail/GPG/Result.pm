@@ -1,6 +1,6 @@
 package Mail::GPG::Result;
 
-# $Id: Result.pm,v 1.3 2004/05/29 14:06:06 joern Exp $
+# $Id: Result.pm,v 1.4 2004/06/15 20:55:47 joern Exp $
 
 use strict;
 
@@ -97,19 +97,19 @@ sub as_string {
 		}
 	    } else {
 		$method = "get_$attr";
-		$string .= sprintf ("%-16s: %s\n", $attr, $self->$method());
+		$string .= sprintf ("%-16s: %s\n", $attr, $self->$method() || '');
 	    }
 	}
 
 	my $stdout = ${$self->get_gpg_stdout};
 	my $stderr = ${$self->get_gpg_stderr};
 
-	$stdout =~ s/\n/\n                  /g;
-	$stderr =~ s/\n/\n                  /g;
+	$stdout =~ s/\n/\n                  /g if $stdout;
+	$stderr =~ s/\n/\n                  /g if $stderr;
 
-	$string .= sprintf ("%-16s: %s\n", "gpg_stdout", $stdout)
+	$string .= sprintf ("%-16s: %s\n", "gpg_stdout", $stdout || '')
 		if not $no_stdout;
-	$string .= sprintf ("%-16s: %s\n", "gpg_stderr", $stderr);
+	$string .= sprintf ("%-16s: %s\n", "gpg_stderr", $stderr || '');
 
 	return $string;
 }
