@@ -1,8 +1,10 @@
 package Mail::GPG::Result;
 
-# $Id: Result.pm,v 1.4 2004/06/15 20:55:47 joern Exp $
+# $Id: Result.pm,v 1.5 2004/12/05 11:44:30 joern Exp $
 
 use strict;
+
+sub get_mail_gpg		{ shift->{mail_gpg}			}
 
 sub get_is_encrypted		{ shift->{is_encrypted}			}
 sub get_enc_ok			{ shift->{enc_ok}			}
@@ -28,6 +30,8 @@ sub new {
 	@par{'gpg_stdout','gpg_stderr','gpg_rc','sign_ok','enc_ok'};
 	my  ($is_signed, $is_encrypted, $sign_mail_aliases) =
 	@par{'is_signed','is_encrypted','sign_mail_aliases'};
+	my  ($mail_gpg) =
+	$par{'mail_gpg'};
 
 	#-- by default extract attributes from gpg's stderr output
 	if ( $gpg_stderr ) {
@@ -57,6 +61,7 @@ sub new {
 	$sign_mail_aliases = []  if not defined $sign_mail_aliases;
 
 	my $self = bless {
+		mail_gpg	  => $mail_gpg,
 		enc_ok		  => $enc_ok,
 		enc_key_id	  => $enc_key_id,
 		enc_mail	  => decode($enc_mail),
@@ -144,6 +149,30 @@ sub as_short_string {
 	return $string;
 }
 
+sub get_sign_trust {
+	my $self = shift;
+
+	return $self->{sign_trust} if exists $self->{sign_trust};
+	
+	my $trust = $self->get_mail_gpg->get_key_trust (
+		key_id => $self->get_sign_key_id
+	);
+	
+	return $self->{sign_trust} = $trust;
+}
+
+sub get_enc_trust {
+	my $self = shift;
+	
+	return $self->{enc_trust} if exists $self->{enc_trust};
+	
+	my $trust = $self->get_mail_gpg->get_key_trust (
+		key_id => $self->get_enc_key_id
+	);
+	
+	return $self->{enc_trust} = $trust;
+}
+
 1;
 
 __END__
@@ -169,11 +198,13 @@ Mail::GPG::Result - Mail::GPG decryption and verification results
   $encrypted           = $result->get_is_encrypted;
   $decryption_ok       = $result->get_enc_ok;
   $encryption_key_id   = $result->get_enc_key_id;
+  $trust               = $result->get_enc_trust;
   $encryption_mail     = $result->get_enc_mail;
 
   $signed              = $result->get_is_signed;
   $signature_ok        = $result->get_sign_ok;
   $signed_key          = $result->get_sign_key_id;
+  $trust               = $result->get_sign_trust;
   $signed_mail         = $result->get_sign_mail;
   $signed_mail_aliases = $result->get_sign_mail_aliases;
 
@@ -207,6 +238,11 @@ Indicates whether decryption of an entity was successful or not.
 
 The key ID of the sender who encrypted an entity.
 
+=item B<sign_trust>
+
+Returns how much you trust the encrypter's key. Refer to
+Mail::GPG->get_key_trust for a list of known levels and their meaning.
+
 =item B<enc_mail>
 
 The mail address of the sender who encrypted an entity.
@@ -222,6 +258,11 @@ Indicates whether the signature could be verified successfully or not.
 =item B<sign_key_id>
 
 The key ID of the sender who signed an entity.
+
+=item B<sign_trust>
+
+Returns how much you trust the signers key. Refer to Mail::GPG->get_key_trust
+for a list of known levels and their meaning.
 
 =item B<sign_mail>
 

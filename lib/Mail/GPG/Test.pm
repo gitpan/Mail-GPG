@@ -1,6 +1,6 @@
 package Mail::GPG::Test;
 
-# $Id: Test.pm,v 1.2 2004/02/15 12:32:58 joern Exp $
+# $Id: Test.pm,v 1.3 2004/12/05 11:42:11 joern Exp $
 
 use strict;
 
@@ -28,10 +28,8 @@ sub get_passphrase		{ 'test' }
 sub new {
 	my $class = shift;
 
-	my $gpg_home_dir = tempdir (
-		"mgpgXXXX", DIR => ".",
-	);
-	
+	my $gpg_home_dir = tempdir ("mgpgXXXX");
+
 	my $self = bless {
 		gpg_home_dir	=> $gpg_home_dir
 	}, $class;
@@ -173,6 +171,8 @@ sub sign_test {
 		return;
 	}
 
+	my $signed_entity_string = $signed_entity->as_string;
+
 	my $parsed_entity = $self->print_parse_entity (
 	    entity        => $signed_entity,
 	    modify        => $invalid,
@@ -194,6 +194,28 @@ sub sign_test {
 		close RETR;
 	}
 
+	if ( not $invalid and not ($encoding eq 'base64' and $method eq 'armor_sign') ) {
+		if ( !Mail::GPG->is_signed(entity=>$signed_entity) ) {
+			ok(0, "$test_name: MIME::Entity sign check failed");
+			return;
+		}
+		if ( !Mail::GPG->is_signed_quick(mail_sref=>\$signed_entity_string) ) {
+			ok(0, "$test_name: mail_sref sign check failed");
+			return;
+		}
+		my $tmp_file = "/tmp/Mail-GPG-Test-$$.txt";
+		open (TMP,"+>$tmp_file") or die "can't write $tmp_file";
+		print TMP $signed_entity_string;
+		if ( !Mail::GPG->is_signed_quick(mail_fh=>\*TMP) ) {
+			ok(0, "$test_name: mail_fh sign check failed");
+			close TMP;
+			unlink $tmp_file;
+			return;
+		}
+		close TMP;
+		unlink $tmp_file;
+	}
+
 	my $result = eval {
 		$mg->verify (
 		  entity => $parsed_entity,
@@ -212,6 +234,10 @@ sub sign_test {
 	      $result->get_sign_mail   ne $self->get_key_mail ) ) {
 		ok (0, "Key/Email wrong");
 		return;
+	}
+
+	if ( not $invalid and $result->get_sign_trust ne '-' ) {
+		ok(0, "Owner trust wrong");
 	}
 
 	if ( $invalid ) {

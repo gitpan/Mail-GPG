@@ -1,8 +1,8 @@
 package Mail::GPG;
 
-# $Id: GPG.pm,v 1.11 2004/11/20 11:25:58 joern Exp $
+# $Id: GPG.pm,v 1.12 2004/12/05 11:45:40 joern Exp $
 
-$VERSION = "1.0.0";
+$VERSION = "1.0.1";
 
 use strict;
 use Carp;
@@ -1007,6 +1007,7 @@ sub decrypt {
 	#-- fetch information from gpg's stderr output
 	#-- and construct a Mail::GPG::Result object from it
 	my $result = Mail::GPG::Result->new (
+		mail_gpg     => $self,
 		is_encrypted => 1,
 		enc_ok       => ($output_stdout ne ''),
 		gpg_stdout   => \$output_stdout,
@@ -1135,6 +1136,7 @@ sub verify {
 	#-- construct a Mail::GPG::Result object from
 	#-- gpg's stderr output
 	my $result = Mail::GPG::Result->new (
+		mail_gpg    => $self,
 		is_signed   => 1,
 		sign_ok	    => !$rc,
 		gpg_stdout  => \$output_stdout,
@@ -1188,7 +1190,54 @@ sub is_signed {
 	} else {
 		return 0;
 	}
-	
+
+	return 1;
+}
+
+sub is_signed_quick {
+	my $self = shift;
+	my %par = @_;
+	my  ($mail_fh, $mail_sref) =
+	@par{'mail_fh','mail_sref'};
+
+	croak "Specify mail_fh xor mail_sref" 
+		unless $mail_fh xor $mail_sref;
+
+	if ( defined $mail_fh ) {
+		#-- rewind filehandle
+		seek($mail_fh, 0, 0);
+
+		#-- read filehandle and do rough checks
+		local($_);
+		my $is_signed = 0;
+		while ( <$mail_fh> ) {
+			if ( m!application/pgp-signature!i ) {
+				$is_signed = 1;
+				last;
+			}
+			if ( /^-----BEGIN PGP SIGNED MESSAGE-----/ ) {
+				$is_signed = 1;
+				last;
+			}
+		}
+
+		#-- rewind filehandle again
+		seek($mail_fh, 0, 0);
+
+		#-- return sign status
+		return $is_signed;
+
+	} elsif ( defined $mail_sref ) {
+		#-- looks like a RFC 3156 multipart/signed entity?
+		return 1 if $$mail_sref =~ m!application/pgp-signature!i;
+
+		#-- or ASCII armor signed?
+		return 1 if $$mail_sref =~ m!^-----BEGIN PGP SIGNED MESSAGE-----!m;
+
+		#-- not signed at all
+		return 0,
+	}
+
 	return 1;
 }
 
@@ -1337,6 +1386,20 @@ sub parse {
 	return $entity;
 }
 
+sub get_key_trust {
+	my $self = shift;
+	my %par = @_;
+	my ($key_id) = $par{'key_id'};
+	
+	my $gpg  = $self->new_gpg_interface;
+	my @keys = $gpg->get_public_keys($key_id);
+
+	croak "Request for key ID '$key_id' got multiple result"
+		if @keys > 1;
+
+	return $keys[0]->get_owner_trust;
+}
+
 __END__
 
 
@@ -1388,8 +1451,10 @@ Mail::GPG - Handling of GnuPG encrypted / signed mails
 
   $mg->is_encrypted ( ... );
   $mg->is_signed ( ... );
+  $mg->is_signed_quick ( ... );
 
   $mg->get_decrypt_key ( ... );
+  $mg->get_key_trust ( ... );
 
 =head1 DESCRIPTION
 
@@ -1405,7 +1470,7 @@ details about this issue.
 =head1 PREREQUISITES
 
   Perl              >= 5.00503
-  GnuPG::Interface  >= 0.33
+  GnuPG::Interface  >= 0.33  (optionally with shipped patch applied)
   MIME-tools        == 5.411 (with shipped patch applied)
   MIME::QuotedPrint >= 2.20  (part of MIME-Base64 distribution)
 
@@ -1431,6 +1496,18 @@ that you apply it. Refer to the next chapter for details):
 
 Make sure that the gpg program is installed and can be found
 using your standard PATH.
+
+You may apply the shipped GnuPG::Interface patch as well. It just
+fixes a warning which is throwed on any keyring inspection. This is a
+known problem and reported to the author, hopefully it will be
+fixed upstream soon:
+
+  % tar xvfz GnuPG-Interface-0.33.tar.gz
+  % cd GnuPG-Interface-0.33
+  % patch -p1 ../Mail-GPG.x.xx/patches/GnuPG-Interface-0.33.tru-record-type.txt
+  % perl Makefile.PL
+  % make test
+  % make install
 
 Then install Mail::GPG
 
@@ -1944,6 +2021,42 @@ The entity to be checked for a signature.
 
 =back
 
+=head2 is_signed_quick
+
+  $signed = $mg->is_signed_quick (
+      mail_fh   => $filehandle,
+    | mail_sref => \$mail_data
+  );
+
+Does some very quick and rough detection whether a message is signed or not.
+Note: the special about this method is it doesn't require a MIME::Entity.
+Creating a MIME::Entity is the opposite of being "quick" ;)
+
+Major drawback is, you can't really rely on the result of this method.
+It can't detect base64 encoded armor signed messages (it reports always
+false on them).
+
+Also it may report a signature although it's not signed at all. E.g. the
+message is a reply to a armor signed message and the quoted parts contain the
+-----BEGIN PGP SIGNATURE----- string or something like that. To be really
+sure you should call is_signed() afterwards.
+
+Just use is_signed_quick() to decide whether you want to do deeper inspection
+or not, but don't rely only on its result.
+
+=over 4
+
+=item mail_fh
+
+An opened filehandle of the mail message to be analyzed. Note: the filehandle
+is rewinded by the method using seek($mail_fh, 0, 0).
+
+=item mail_sref
+
+A reference to a scalar holding the mail message to be analyzed.
+
+=back
+
 =head2 is_encrypted
 
   $encrypted = $mg->is_encrypted (
@@ -2010,6 +2123,41 @@ to handle utf8 encoded data yourself.
 =item search
 
 Key id or email address to query for.
+
+=back
+
+=head2 get_key_trust
+
+  $trust = $mg->get_key_trust (
+    key_id => $key_id
+  );
+  
+Reports the trust level of the given key. The known levels are listed in
+the DETAILS file of the gnupg distribution, but qouted here for convenience
+(gnupg 1.2.5):
+
+  o = Unknown (this key is new to the system)
+  i = The key is invalid (e.g. due to a missing self-signature)
+  d = The key has been disabled
+      (deprecated - use the 'D' in field 12 instead)
+  r = The key has been revoked
+  e = The key has expired
+  - = Unknown trust (i.e. no value assigned)
+  q = Undefined trust
+      '-' and 'q' may safely be treated as the same
+      value for most purposes
+  n = Don't trust this key at all
+  m = There is marginal trust in this key
+  f = The key is fully trusted
+  u = The key is ultimately trusted.  This often means
+      that the secret key is available, but any key may
+      be marked as ultimately trusted.
+
+=over 4
+
+=item key_id
+
+Key id to query for.
 
 =back
 

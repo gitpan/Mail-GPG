@@ -44,8 +44,10 @@ SYNOPSIS
 
       $mg->is_encrypted ( ... );
       $mg->is_signed ( ... );
+      $mg->is_signed_quick ( ... );
 
       $mg->get_decrypt_key ( ... );
+      $mg->get_key_trust ( ... );
 
 DESCRIPTION
     This Perl modules handles all the details of encrypting and signing
@@ -59,7 +61,7 @@ DESCRIPTION
 
 PREREQUISITES
       Perl              >= 5.00503
-      GnuPG::Interface  >= 0.33
+      GnuPG::Interface  >= 0.33  (optionally with shipped patch applied)
       MIME-tools        == 5.411 (with shipped patch applied)
       MIME::QuotedPrint >= 2.20  (part of MIME-Base64 distribution)
 
@@ -83,6 +85,18 @@ INSTALLATION
 
     Make sure that the gpg program is installed and can be found using your
     standard PATH.
+
+    You may apply the shipped GnuPG::Interface patch as well. It just fixes
+    a warning which is throwed on any keyring inspection. This is a known
+    problem and reported to the author, hopefully it will be fixed upstream
+    soon:
+
+      % tar xvfz GnuPG-Interface-0.33.tar.gz
+      % cd GnuPG-Interface-0.33
+      % patch -p1 ../Mail-GPG.x.xx/patches/GnuPG-Interface-0.33.tru-record-type.txt
+      % perl Makefile.PL
+      % make test
+      % make install
 
     Then install Mail::GPG
 

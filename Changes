@@ -1,6 +1,17 @@
-$Id: Changes,v 1.9 2004/11/20 11:26:14 joern Exp $
+$Id: Changes,v 1.11 2004/12/05 11:44:52 joern Exp $
 
 Revision history and release notes for Mail::GPG.
+
+1.0.1 Sun Dec 5, 2004, joern
+	Features:
+	- new methods requested by Kjetil Kjernsmo <kjetil AT kjernsmo.net>
+	  - Mail::GPG->is_signed_quick()
+	  - Mail::GPG->get_key_trust()
+	  - Mail::GPG::Result->get_sign_trust()
+	  - Mail::GPG::Result->get_enc_trust()
+	- a patch for GnuPG::Interface 0.33 fixing a (hamrless but
+	  annoying ;) warning about unknown record types on keyring
+	  inspection with newer GnuPG versions.
 
 1.0.0 Sat Nov 20, 2004, joern
 	Features:
