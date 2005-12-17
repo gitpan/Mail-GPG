@@ -1,6 +1,6 @@
 package Mail::GPG::Result;
 
-# $Id: Result.pm,v 1.5 2004/12/05 11:44:30 joern Exp $
+# $Id: Result.pm,v 1.6 2005/12/17 13:18:05 joern Exp $
 
 use strict;
 
@@ -318,7 +318,7 @@ Joern Reder <joern AT zyn.de>
 
 =head1 COPYRIGHT
 
-Copyright (C) 2004 by Joern Reder, All Rights Reserved.
+Copyright (C) 2004-2005 by Joern Reder, All Rights Reserved.
 
 This library is free software; you can redistribute it
 and/or modify it under the same terms as Perl itself.

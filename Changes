@@ -1,112 +1,125 @@
-$Id: Changes,v 1.11 2004/12/05 11:44:52 joern Exp $
+$Id: Changes,v 1.12 2005/12/17 13:07:48 joern Exp $
 
 Revision history and release notes for Mail::GPG.
 
+1.0.2 Sat Dec 17, 2005, joern
+    Features:
+    - added a patch against MIME-tools 5.418, which hopefully
+      gets into the official distribution soon. Thanks to
+      Edward J. Sabol <sabol AT alderaan.gsfc.nasa.gov> who
+      helped me to get this patch right.
+
+    Bugfixes:
+    - Fixed a (potential) bug with Mail::GPG->get_key_trust(),
+      which was reported and debugged by Edward J. Sabol, but
+      couldn't be reproduced on my system. However the fix
+      is harmless, so I added it.
+
 1.0.1 Sun Dec 5, 2004, joern
-	Features:
-	- new methods requested by Kjetil Kjernsmo <kjetil AT kjernsmo.net>
-	  - Mail::GPG->is_signed_quick()
-	  - Mail::GPG->get_key_trust()
-	  - Mail::GPG::Result->get_sign_trust()
-	  - Mail::GPG::Result->get_enc_trust()
-	- a patch for GnuPG::Interface 0.33 fixing a (hamrless but
-	  annoying ;) warning about unknown record types on keyring
-	  inspection with newer GnuPG versions.
+    Features:
+    - new methods requested by Kjetil Kjernsmo <kjetil AT kjernsmo.net>
+      - Mail::GPG->is_signed_quick()
+      - Mail::GPG->get_key_trust()
+      - Mail::GPG::Result->get_sign_trust()
+      - Mail::GPG::Result->get_enc_trust()
+    - a patch for GnuPG::Interface 0.33 fixing a (harmless but
+      annoying ;) warning about unknown record types on keyring
+      inspection with newer GnuPG versions.
 
 1.0.0 Sat Nov 20, 2004, joern
-	Features:
-	- new parse() convenience method for parsing a mail message.
-	  It uses MIME::Parser and distinguish between MIME and
-	  non-MIME messages, doing the right thing regarding reading
-	  decoded or encoded bodies.
-	
-	Bugfixes:
-	- decrypt(): used encoded entity instead of decoded in case
-	  of a MIME message. Thanks for the report to Paul Murphy
-	  <pmurphy AT ionixpharma.com>.
+    Features:
+    - new parse() convenience method for parsing a mail message.
+      It uses MIME::Parser and distinguish between MIME and
+      non-MIME messages, doing the right thing regarding reading
+      decoded or encoded bodies.
+
+    Bugfixes:
+    - decrypt(): used encoded entity instead of decoded in case
+      of a MIME message. Thanks for the report to Paul Murphy
+      <pmurphy AT ionixpharma.com>.
 
 0.98 Sun Jun 27, 2004, joern
-	Bugfixes:
-	- Mail::GPG->decrypt() died on encrypted+signed mails for
-	  which the public key was missing (and thus no verification
-	  possible). That's not what we expect, instead we can check
-	  the verification through the returned result object but
-	  have a successfully decrypted mail.
+    Bugfixes:
+    - Mail::GPG->decrypt() died on encrypted+signed mails for
+      which the public key was missing (and thus no verification
+      possible). That's not what we expect, instead we can check
+      the verification through the returned result object but
+      have a successfully decrypted mail.
 
 0.97 Tue Jun 15, 2004, joern
-	Bugfixes:
-	- Mail::GPG::Result->as_string() reported some warnings
-	  regarding uninitialized values. Thanks to Edward J. Sabol
-	  <sabol AT alderaan.gsfc.nasa.gov> for his patch.
-	- mgpg-test script now has the -w switch
+    Bugfixes:
+    - Mail::GPG::Result->as_string() reported some warnings
+      regarding uninitialized values. Thanks to Edward J. Sabol
+      <sabol AT alderaan.gsfc.nasa.gov> for his patch.
+    - mgpg-test script now has the -w switch
 
 0.96 Sat May 29, 2004, joern
-	Bugfixes:
-	- added missing dependency GnuPG::Interface in Makefile.PL
-	  Reported through cpan-testers.
+    Bugfixes:
+    - added missing dependency GnuPG::Interface in Makefile.PL
+      Reported through cpan-testers.
 
 0.95 Sat May 29, 2004, joern
-	Features:
-	- query_keyring() now returns all matching entries as a
-	  list of key-id/address pairs, which can be slurped
-	  into a hash. The old behaviour is still warranted, so
-	  this extension is backward compatible.
-	- the signer's aliases are now reported with the new
-	  sign_mail_aliases attribute of Mail::GPG::Result. Thanks
-	  for the suggestion to Piotr Maj <ant AT kernelpanic.pl>.
+    Features:
+    - query_keyring() now returns all matching entries as a
+      list of key-id/address pairs, which can be slurped
+      into a hash. The old behaviour is still warranted, so
+      this extension is backward compatible.
+    - the signer's aliases are now reported with the new
+      sign_mail_aliases attribute of Mail::GPG::Result. Thanks
+      for the suggestion to Piotr Maj <ant AT kernelpanic.pl>.
 
-	Bugfixes:
-	- some methods failed on systems with non-english
-	  locales. Thanks to Daniel Ciaglia <daniel AT ciaglia.de>
-	  and Piotr Maj for their reports.
-	- not a fix in Mail::GPG but in MIME-tools: some mail
-	  user agents (like mutt and sylpheed) add an empty line
-	  as a preamble before the first part of a MIME signed
-	  mail, if the message itself has attachments. MIME-tools
-	  suppress this line on output, so the signature gets
-	  invalid. Mail::GPG ships with a new patch to MIME-tools
-	  5.411 which fixes this problem. Thanks for the report
-	  to Daniel Ciaglia.
+    Bugfixes:
+    - some methods failed on systems with non-english
+      locales. Thanks to Daniel Ciaglia <daniel AT ciaglia.de>
+      and Piotr Maj for their reports.
+    - not a fix in Mail::GPG but in MIME-tools: some mail
+      user agents (like mutt and sylpheed) add an empty line
+      as a preamble before the first part of a MIME signed
+      mail, if the message itself has attachments. MIME-tools
+      suppress this line on output, so the signature gets
+      invalid. Mail::GPG ships with a new patch to MIME-tools
+      5.411 which fixes this problem. Thanks for the report
+      to Daniel Ciaglia.
 
 0.94 Sun Feb 15, 2004, joern
-	Bugfixes:
-	- new I/O multiplex code needed some adjustments to
-	  work with Perl 5.005_03, because its read() and seek()
-	  functions work on native filehandles only.
+    Bugfixes:
+    - new I/O multiplex code needed some adjustments to
+      work with Perl 5.005_03, because its read() and seek()
+      functions work on native filehandles only.
 
 0.93 Sat Feb 14 2004, joern
-	Bugfixes:
-	- perform multiplexed I/O with gpg to prevent buffering
-	  deadlocks which may occur with huge amounts of data.
-	  Added a new test t/04.big.t, which creates a 4 MB
-	  entity and signs it. This test takes some time (on
-	  an Athlon 1800XP about 20 seconds), so be patient ;)
-	- set LC_MESSAGES=C where output of gpg is parsed to
-	  get status information. Without this some Mail::GPG
-	  methods didn't work on systems with non english locales.
+    Bugfixes:
+    - perform multiplexed I/O with gpg to prevent buffering
+      deadlocks which may occur with huge amounts of data.
+      Added a new test t/04.big.t, which creates a 4 MB
+      entity and signs it. This test takes some time (on
+      an Athlon 1800XP about 20 seconds), so be patient ;)
+    - set LC_MESSAGES=C where output of gpg is parsed to
+      get status information. Without this some Mail::GPG
+      methods didn't work on systems with non english locales.
 
 0.92 Fri Feb 13 2004, joern
-	Bugfixes:
-	- make test failed on systems without the MIME-tools
-	  patch, although the corresponding tests were skipped.
+    Bugfixes:
+    - make test failed on systems without the MIME-tools
+      patch, although the corresponding tests were skipped.
 
 0.91 Wed Feb 11 2004, joern
-	Bugfixes:
-	- mime_sign_encrypt: check key_id only if entity should
-	  be signed
-	- ignore SIGPIPE from gpg
-	
+    Bugfixes:
+    - mime_sign_encrypt: check key_id only if entity should
+      be signed
+    - ignore SIGPIPE from gpg
+
 0.90 Sun Feb 8 2004 joern
-	First public release, including the following methods:
-	- mime_sign
-	- mime_encrypt
-	- mime_sign_encrypt
-	- armor_sign
-	- armor_encrypt
-	- armor_sign_encrypt
-	- decrypt
-	- verify
-	- is_encrypted
-	- is_signed
-	- query_keyring
-	- get_decrypt_key
+    First public release, including the following methods:
+    - mime_sign
+    - mime_encrypt
+    - mime_sign_encrypt
+    - armor_sign
+    - armor_encrypt
+    - armor_sign_encrypt
+    - decrypt
+    - verify
+    - is_encrypted
+    - is_signed
+    - query_keyring
+    - get_decrypt_key

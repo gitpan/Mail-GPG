@@ -1,8 +1,8 @@
 package Mail::GPG;
 
-# $Id: GPG.pm,v 1.12 2004/12/05 11:45:40 joern Exp $
+# $Id: GPG.pm,v 1.16 2005/12/17 13:18:05 joern Exp $
 
-$VERSION = "1.0.1";
+$VERSION = "1.0.2";
 
 use strict;
 use Carp;
@@ -1397,7 +1397,7 @@ sub get_key_trust {
 	croak "Request for key ID '$key_id' got multiple result"
 		if @keys > 1;
 
-	return $keys[0]->get_owner_trust;
+	return $keys[0]->owner_trust;
 }
 
 __END__
@@ -1471,25 +1471,25 @@ details about this issue.
 
   Perl              >= 5.00503
   GnuPG::Interface  >= 0.33  (optionally with shipped patch applied)
-  MIME-tools        == 5.411 (with shipped patch applied)
+  MIME-tools        == 5.411 (with shipped patch applied, see below)
   MIME::QuotedPrint >= 2.20  (part of MIME-Base64 distribution)
 
 =head1 INSTALLATION
 
-First get MIME-tools 5.411 and extract it, e.g. on
+First get MIME-tools 5.411 or 5.418 and extract it, e.g. on
 the same level where you extracted the Mail::GPG
 tarball.
 
   % tar xvfz Mail-GPG-x.xx.tar.gz
-  % tar xvfz MIME-tools-5.411.tar.gz
+  % tar xvfz MIME-tools-5.41x.tar.gz
 
 Apply the MIME-tools patch shipped with this module
 and build and install the MIME-tools package (Mail::GPG
 works without this patch, but it's strongly suggested,
 that you apply it. Refer to the next chapter for details):
 
-  % cd MIME-tools-5.411
-  % patch -p1 < ../Mail-GPG.x.xx/patches/MIME-tools-5.411.enc.preamble.txt
+  % cd MIME-tools-5.41x
+  % patch -p1 < ../Mail-GPG.x.xx/patches/MIME-tools-5.41x.enc.preamble.txt
   % perl Makefile.PL
   % make test
   % make install
@@ -1552,10 +1552,11 @@ B<strongly suggested> that you apply it. Otherwise you have
 no guarantee that MIME signed messages are verified correctly
 by Mail::GPG.
 
-Unfortunately the maintainer of MIME-tools currently seeks for
-a new maintainer and stopped development, so there is no chance
-to get the patch into an official CPAN version of MIME-tools.
-That's why you have to apply the patch manually.
+I'm in contact with the maintainer of MIME-tools to get my
+patch into the official distribution. For a long time MIME-tools
+had no active maintainer, but that changed recently, so I'm
+optimistic that newer versions of MIME-tools won't need my
+patch anymore.
 
 =head1 WHY ANOTHER GnuPG MAIL MODULE?
 
@@ -2174,7 +2175,7 @@ can contact me in english as well.
 
 =head1 COPYRIGHT
 
-Copyright (C) 2004 by Joern Reder, All Rights Reserved.
+Copyright (C) 2004-2005 by Joern Reder, All Rights Reserved.
 
 This library is free software; you can redistribute it
 and/or modify it under the same terms as Perl itself.
