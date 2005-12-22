@@ -1,10 +1,19 @@
-$Id: Changes,v 1.12 2005/12/17 13:07:48 joern Exp $
+$Id: Changes,v 1.14 2005/12/22 23:09:32 joern Exp $
 
 Revision history and release notes for Mail::GPG.
 
+1.0.3 Fri Dec 22, 2005, joern
+    Notes:
+    - No code changes, just removed MIME-tools patches from the
+      distribution because the official MIME-tools 5.419 package
+      now contains them.
+    - That's why Mail::GPG instists on MIME-tools 5.419 from now on.
+    - Removed all pointers to the MIME-tools patch from the
+      documentation.
+
 1.0.2 Sat Dec 17, 2005, joern
     Features:
-    - added a patch against MIME-tools 5.418, which hopefully
+    - Added a patch against MIME-tools 5.418, which hopefully
       gets into the official distribution soon. Thanks to
       Edward J. Sabol <sabol AT alderaan.gsfc.nasa.gov> who
       helped me to get this patch right.
@@ -17,18 +26,18 @@ Revision history and release notes for Mail::GPG.
 
 1.0.1 Sun Dec 5, 2004, joern
     Features:
-    - new methods requested by Kjetil Kjernsmo <kjetil AT kjernsmo.net>
+    - New methods requested by Kjetil Kjernsmo <kjetil AT kjernsmo.net>
       - Mail::GPG->is_signed_quick()
       - Mail::GPG->get_key_trust()
       - Mail::GPG::Result->get_sign_trust()
       - Mail::GPG::Result->get_enc_trust()
-    - a patch for GnuPG::Interface 0.33 fixing a (harmless but
+    - A patch for GnuPG::Interface 0.33 fixing a (harmless but
       annoying ;) warning about unknown record types on keyring
       inspection with newer GnuPG versions.
 
 1.0.0 Sat Nov 20, 2004, joern
     Features:
-    - new parse() convenience method for parsing a mail message.
+    - New parse() convenience method for parsing a mail message.
       It uses MIME::Parser and distinguish between MIME and
       non-MIME messages, doing the right thing regarding reading
       decoded or encoded bodies.
@@ -55,7 +64,7 @@ Revision history and release notes for Mail::GPG.
 
 0.96 Sat May 29, 2004, joern
     Bugfixes:
-    - added missing dependency GnuPG::Interface in Makefile.PL
+    - Added missing dependency GnuPG::Interface in Makefile.PL
       Reported through cpan-testers.
 
 0.95 Sat May 29, 2004, joern
@@ -64,15 +73,15 @@ Revision history and release notes for Mail::GPG.
       list of key-id/address pairs, which can be slurped
       into a hash. The old behaviour is still warranted, so
       this extension is backward compatible.
-    - the signer's aliases are now reported with the new
+    - The signer's aliases are now reported with the new
       sign_mail_aliases attribute of Mail::GPG::Result. Thanks
       for the suggestion to Piotr Maj <ant AT kernelpanic.pl>.
 
     Bugfixes:
-    - some methods failed on systems with non-english
+    - Some methods failed on systems with non-english
       locales. Thanks to Daniel Ciaglia <daniel AT ciaglia.de>
       and Piotr Maj for their reports.
-    - not a fix in Mail::GPG but in MIME-tools: some mail
+    - Not a fix in Mail::GPG but in MIME-tools: some mail
       user agents (like mutt and sylpheed) add an empty line
       as a preamble before the first part of a MIME signed
       mail, if the message itself has attachments. MIME-tools
@@ -83,18 +92,18 @@ Revision history and release notes for Mail::GPG.
 
 0.94 Sun Feb 15, 2004, joern
     Bugfixes:
-    - new I/O multiplex code needed some adjustments to
+    - New I/O multiplex code needed some adjustments to
       work with Perl 5.005_03, because its read() and seek()
       functions work on native filehandles only.
 
 0.93 Sat Feb 14 2004, joern
     Bugfixes:
-    - perform multiplexed I/O with gpg to prevent buffering
+    - Perform multiplexed I/O with gpg to prevent buffering
       deadlocks which may occur with huge amounts of data.
       Added a new test t/04.big.t, which creates a 4 MB
       entity and signs it. This test takes some time (on
       an Athlon 1800XP about 20 seconds), so be patient ;)
-    - set LC_MESSAGES=C where output of gpg is parsed to
+    - Set LC_MESSAGES=C where output of gpg is parsed to
       get status information. Without this some Mail::GPG
       methods didn't work on systems with non english locales.
 
@@ -107,7 +116,7 @@ Revision history and release notes for Mail::GPG.
     Bugfixes:
     - mime_sign_encrypt: check key_id only if entity should
       be signed
-    - ignore SIGPIPE from gpg
+    - Ignore SIGPIPE from gpg
 
 0.90 Sun Feb 8 2004 joern
     First public release, including the following methods:

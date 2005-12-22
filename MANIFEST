@@ -14,6 +14,4 @@ README
 META.yml
 genreadme
 patches/GnuPG-Interface-0.33.tru-record-type.txt
-patches/MIME-tools-5.411.enc.preamble.txt
-patches/MIME-tools-5.418.enc.preamble.patch.txt
 Changes

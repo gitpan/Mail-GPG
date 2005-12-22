@@ -1,4 +1,4 @@
-# $Id: Makefile.PL,v 1.2 2004/05/29 18:33:51 joern Exp $
+# $Id: Makefile.PL,v 1.3 2005/12/22 21:41:54 joern Exp $
 
 use strict;
 
@@ -44,8 +44,8 @@ WriteMakefile(
     'NAME'	   => 'Mail::GPG',
     'VERSION_FROM' => 'lib/Mail/GPG.pm',
     'PREREQ_PM'    => {
-    	'MIME::Entity'      => 0,
-    	'MIME::Parser'      => 0,
+    	'MIME::Entity'      => 5.419,
+    	'MIME::Parser'      => 5.419,
 	'Mail::Address'     => 0,
 	'MIME::QuotedPrint' => 2.20,
 	'GnuPG::Interface'  => 0,

@@ -1,8 +1,8 @@
 package Mail::GPG;
 
-# $Id: GPG.pm,v 1.16 2005/12/17 13:18:05 joern Exp $
+# $Id: GPG.pm,v 1.18 2005/12/22 23:07:01 joern Exp $
 
-$VERSION = "1.0.2";
+$VERSION = "1.0.3";
 
 use strict;
 use Carp;
@@ -1462,45 +1462,19 @@ This Perl modules handles all the details of encrypting and
 signing Mails using GnuPG according to RFC 3156 and RFC 2440,
 that is OpenPGP MIME and traditional armor signed/encrypted mails.
 
-This module also ships a patch to MIME-tools. Without this patch
-proper verification of MIME signed messages isn't guaranteed!
-Refer to the "MIME-tools PATCH" chapter in the documentation for
-details about this issue.
-
 =head1 PREREQUISITES
 
   Perl              >= 5.00503
-  GnuPG::Interface  >= 0.33  (optionally with shipped patch applied)
-  MIME-tools        == 5.411 (with shipped patch applied, see below)
+  MIME-tools        >= 5.419
   MIME::QuotedPrint >= 2.20  (part of MIME-Base64 distribution)
+  GnuPG::Interface  >= 0.33  (optionally with shipped patch applied)
 
 =head1 INSTALLATION
 
-First get MIME-tools 5.411 or 5.418 and extract it, e.g. on
-the same level where you extracted the Mail::GPG
-tarball.
-
-  % tar xvfz Mail-GPG-x.xx.tar.gz
-  % tar xvfz MIME-tools-5.41x.tar.gz
-
-Apply the MIME-tools patch shipped with this module
-and build and install the MIME-tools package (Mail::GPG
-works without this patch, but it's strongly suggested,
-that you apply it. Refer to the next chapter for details):
-
-  % cd MIME-tools-5.41x
-  % patch -p1 < ../Mail-GPG.x.xx/patches/MIME-tools-5.41x.enc.preamble.txt
-  % perl Makefile.PL
-  % make test
-  % make install
-
-Make sure that the gpg program is installed and can be found
-using your standard PATH.
-
-You may apply the shipped GnuPG::Interface patch as well. It just
-fixes a warning which is throwed on any keyring inspection. This is a
-known problem and reported to the author, hopefully it will be
-fixed upstream soon:
+Before you install Mail::GPG you may want to apply the shipped
+GnuPG::Interface patch. It just fixes a warning which is throwed
+on any keyring inspection. This is a known problem and reported
+to the author, hopefully it will be fixed upstream soon:
 
   % tar xvfz GnuPG-Interface-0.33.tar.gz
   % cd GnuPG-Interface-0.33
@@ -1523,65 +1497,6 @@ all useful tests will be skipped.
 
 Note that the test 04.big needs some time, on an Athlon 1800XP
 about 12 seconds, so be patient ;)
-
-=head1 MIME-tools PATCH
-
-Some words about MIME-tools: MIME::Entity internally stores
-all data in decoded form, that is without any content transfer
-encoding like quoted-printable or base64 applied. In particular if
-you parse with MIME::Parser, e.g. a MIME signed mail, the entity
-will always be stored that way.
-
-But RFC 3156 requires the B<encoded> version of the MIME entity,
-because the signature is calculated based on the encoded form.
-Some content transfer encodings are ambigious and
-you can't reverse the process and get back the correct encoded
-version without breaking the signature.
-
-The shipped MIME-tools patch adds the ability of having encoded
-data in a MIME::Entity object and a method to advise MIME::Parser
-to use this ability and store the parsed data in encoded form.
-
-Additionally MIME-tools does not reproduce preambles which consist
-only of empty lines. This also invalids signatures. E.g. mutt and
-sylpheed are known to add such empty preambles. The patch fixes
-this problem.
-
-Mail::GPG generally works without this patch, but it's
-B<strongly suggested> that you apply it. Otherwise you have
-no guarantee that MIME signed messages are verified correctly
-by Mail::GPG.
-
-I'm in contact with the maintainer of MIME-tools to get my
-patch into the official distribution. For a long time MIME-tools
-had no active maintainer, but that changed recently, so I'm
-optimistic that newer versions of MIME-tools won't need my
-patch anymore.
-
-=head1 WHY ANOTHER GnuPG MAIL MODULE?
-
-I know the Mail::GnuPG module. I worked a long time with it and
-submitted a few patches adding features and fixing bugs. The
-problems with MIME signed messages mentioned above led me to my own
-implementation. In the meantime I know, that regarding the implemented
-RFC's Mail::GnuPG works as correct as Mail::GPG does. Only that 
-Mail::GnuPG's documentation is not aware of these MIME signature
-problems resp. encoded vs decoded data storage.
-
-I like clean OO interfaces and well documented source code. With
-Mail::GnuPG you need to access internal data structures from
-outside (e.g. things like gpg's last output). Also Mail::GnuPG
-modifies the MIME::Entity objects you pass to it, which is bad
-in some situations. Mail::GPG has some more features, e.g. multiplexed
-I/O with the gpg program, which makes it work even with huge
-amounts of data.
-
-Last but not least it was simply more fun for me to fix my own bugs
-in my own code and to learn all the details by making my own faults.
-And fun is important for an Open Source programmer, in particular
-for me ;)
-
-So it's up to you: you have the choice, not too bad at all, not? ;)
 
 =head1 KNOWN BUGS
 
@@ -1926,11 +1841,11 @@ must see the B<decoded> data.
 But if it's a MIME PGP message, Mail::GPG needs the
 B<encoded> data.
 
-With the shipped MIME-tools patch you can advice MIME::Parser
-to create an encoded entity (be default it creates decoded
-entities and encodes them on demand). You can activate this
-transparent encoding mode with the B<decode_bodies>
-attribute of MIME::Parser, which defaults to 1:
+You can advice MIME::Parser to create an encoded entity
+(by default it creates decoded entities and encodes them on
+demand). You can activate this transparent encoding mode by
+settomg B<decode_bodies> attribute of MIME::Parser to 0
+(it defaults to 1):
 
   $parser = MIME::Parser->new;
   $parser->decode_bodies(0);
@@ -1938,9 +1853,9 @@ attribute of MIME::Parser, which defaults to 1:
 So you need to set decode_bodies(0) for MIME  messages
 and keep the default of decode_bodies(1) for armor
 messages. But how can you know in advance which is right
-without having the entity parsed already? You can't!
+without having the entity parsed already? You can't.
 
-One possible solution is to parse the entity twice if it's
+So the solution is to parse the entity twice if it's
 MIME, and keep the decoded version from the first
 parse run otherwise, or you do some quick analysis on the
 data in question, without really parsing it.
