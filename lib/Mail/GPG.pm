@@ -1,8 +1,8 @@
 package Mail::GPG;
 
-# $Id: GPG.pm,v 1.18 2005/12/22 23:07:01 joern Exp $
+# $Id: GPG.pm,v 1.21 2006/04/14 11:14:27 joern Exp $
 
-$VERSION = "1.0.3";
+$VERSION = "1.0.4";
 
 use strict;
 use Carp;
@@ -23,6 +23,7 @@ sub get_digest			{ shift->{digest}			}
 sub get_default_key_encrypt	{ shift->{default_key_encrypt}		}
 sub get_gpg_call		{ shift->{gpg_call}			}
 sub get_no_strict_7bit_encoding	{ shift->{no_strict_7bit_encoding}	}
+sub get_use_long_key_ids        { shift->{use_long_key_ids}             }
 
 sub set_default_key_id		{ shift->{default_key_id}	= $_[1]	}
 sub set_default_passphrase	{ shift->{default_passphrase}	= $_[1]	}
@@ -33,1371 +34,1415 @@ sub set_digest			{ shift->{digest}		= $_[1]	}
 sub set_default_key_encrypt	{ shift->{default_key_encrypt}	= $_[1]	}
 sub set_gpg_call		{ shift->{gpg_call}		= $_[1]	}
 sub set_no_strict_7bit_encoding	{ shift->{no_strict_7bit_encoding}=$_[1]}
+sub set_use_long_key_ids        { shift->{use_long_key_ids}     = $_[1] }
 
 sub new {
-	my $class = shift;
-	my %par = @_;
-	my  ($default_key_id, $default_passphrase, $debug, $debug_dir) =
-	@par{'default_key_id','default_passphrase','debug','debug_dir'};
-	my  ($gnupg_hash_init, $digest, $default_key_encrypt, $gpg_call) =
-	@par{'gnupg_hash_init','digest','default_key_encrypt','gpg_call'};
-	my  ($no_strict_7bit_encoding) =
-	$par{'no_strict_7bit_encoding'};
+    my $class = shift;
+    my %par   = @_;
+    my  ($default_key_id, $default_passphrase, $debug, $debug_dir) =
+    @par{'default_key_id','default_passphrase','debug','debug_dir'};
+    my  ($gnupg_hash_init, $digest, $gpg_call, $default_key_encrypt) =
+    @par{'gnupg_hash_init','digest','gpg_call','default_key_encrypt'};
+    my  ($no_strict_7bit_encoding, $use_long_key_ids) =
+    @par{'no_strict_7bit_encoding','use_long_key_ids'};
 
-	$debug_dir       	 ||= File::Spec->tmpdir;
-	$gnupg_hash_init 	 ||= {};
-	$digest		 	 ||= "RIPEMD160";
-	$gpg_call	 	 ||= "gpg";
-	$no_strict_7bit_encoding ||= 0;
+    $debug_dir               ||= File::Spec->tmpdir;
+    $gnupg_hash_init         ||= {};
+    $digest                  ||= "RIPEMD160";
+    $gpg_call                ||= "gpg";
+    $no_strict_7bit_encoding ||= 0;
+    $use_long_key_ids        ||= 0;
 
-	my $self = bless {
-		default_key_id		=> $default_key_id,
-		default_passphrase	=> $default_passphrase,
-		debug			=> $debug,
-		debug_dir		=> $debug_dir,
-		gnupg_hash_init		=> $gnupg_hash_init,
-		digest			=> $digest,
-		default_key_encrypt	=> $default_key_encrypt,
-		gpg_call		=> $gpg_call,
-		no_strict_7bit_encoding	=> $no_strict_7bit_encoding,
-	}, $class;
-	
-	return $self;
+    my $self = bless {
+        default_key_id          => $default_key_id,
+        default_passphrase      => $default_passphrase,
+        debug                   => $debug,
+        debug_dir               => $debug_dir,
+        gnupg_hash_init         => $gnupg_hash_init,
+        digest                  => $digest,
+        default_key_encrypt     => $default_key_encrypt,
+        gpg_call                => $gpg_call,
+        no_strict_7bit_encoding => $no_strict_7bit_encoding,
+        use_long_key_ids        => $use_long_key_ids,
+    }, $class;
+
+    return $self;
 }
 
 sub new_gpg_interface {
-	my $self = shift;
-	my %par = @_;
-	my ($options, $passphrase) = @par{'options','passphrase'};
+    my $self = shift;
+    my %par  = @_;
+    my ($options, $passphrase) = @par{'options','passphrase'};
 
-	my $gpg = GnuPG::Interface->new;
+    my $gpg = GnuPG::Interface->new;
 
-	$gpg->passphrase ( $passphrase ) if defined $passphrase;
-	$gpg->call ( $self->get_gpg_call ) if $self->get_gpg_call ne '';
+    $gpg->passphrase($passphrase) if defined $passphrase;
+    $gpg->call( $self->get_gpg_call ) if $self->get_gpg_call ne '';
 
-	my $gnupg_hash_init = $self->get_gnupg_hash_init;
+    my $gnupg_hash_init = $self->get_gnupg_hash_init;
 
-	if ( $options ) {
-		$gpg->options->hash_init (
-			%{$options}, %{$gnupg_hash_init} 
-		);
-	} else {
-		$gpg->options->hash_init (
-			 %{$gnupg_hash_init} 
-		);
-	}
+    if ($options) {
+        $gpg->options->hash_init( %{$options}, %{$gnupg_hash_init} );
+    }
+    else {
+        $gpg->options->hash_init( %{$gnupg_hash_init} );
+    }
 
-	$gpg->options->push_extra_args ('--digest', $self->get_digest);
-	$gpg->options->meta_interactive(0);
+    $gpg->options->push_extra_args( '--digest', $self->get_digest );
+    $gpg->options->meta_interactive(0);
 
-	return $gpg;
+    return $gpg;
 }
 
 sub save_debug_file {
-	my $self = shift;
-	my %par = @_;
-	my  ($name, $data, $data_fh) =
-	@par{'name','data','data_fh'};
+    my $self = shift;
+    my %par  = @_;
+    my ($name, $data, $data_fh ) = @par{'name','data','data_fh' };
 
-	$name = $self->get_debug_dir."/mgpg-".$name;
+    $name = $self->get_debug_dir . "/mgpg-" . $name;
 
-	open (DBG, ">$name") or die "can't write $name";
-	if ( $data_fh ) {
-		seek $data_fh, 0, 0;
-		print DBG $_ while <$data_fh>;
-	} elsif ( ref $data ) {
-		print DBG $$data;
-	} else {
-		print DBG $data;
-	}
-	close DBG;
-	
-	1;
+    open( DBG, ">$name" ) or die "can't write $name";
+    if ($data_fh) {
+        seek $data_fh, 0, 0;
+        print DBG $_ while <$data_fh>;
+    }
+    elsif ( ref $data ) {
+        print DBG $$data;
+    }
+    else {
+        print DBG $data;
+    }
+    close DBG;
+
+    1;
 }
 
 sub check_7bit_encoding_of_all_parts {
-	my $self = shift;
-	my %par = @_;
-	my ($entity) = $par{'entity'};
+    my $self     = shift;
+    my %par      = @_;
+    my ($entity) = $par{'entity'};
 
-	#-- skip if no strict encoding check should be applied
-	return 1 if $self->get_no_strict_7bit_encoding;
+    #-- skip if no strict encoding check should be applied
+    return 1 if $self->get_no_strict_7bit_encoding;
 
-	#-- first the primary entity
-	my $encoding = $entity->head->get("content-transfer-encoding");
-	die "Content transfer encoding '$encoding' is not 7bit safe"
-		unless not defined $encoding or
-		       $encoding =~ /^(quoted-printable|base64|7bit)\s*$/i;
+    #-- first the primary entity
+    my $encoding = $entity->head->get("content-transfer-encoding");
+    die "Content transfer encoding '$encoding' is not 7bit safe"
+        unless not defined $encoding
+        or $encoding =~ /^(quoted-printable|base64|7bit)\s*$/i;
 
-	#-- now all parts
-	return 1 if not $entity->parts;
+    #-- now all parts
+    return 1 if not $entity->parts;
 
-	#-- recursively
-	my $parts = $entity->parts;
-	for ( my $i=0; $i < $parts; ++$i ) {
-		$self->check_7bit_encoding_of_all_parts (
-			entity => $entity->parts($i),
-		);
-	}
-	
-	return 1;
+    #-- recursively
+    my $parts = $entity->parts;
+    for ( my $i = 0; $i < $parts; ++$i ) {
+        $self->check_7bit_encoding_of_all_parts( entity => $entity->parts($i),
+        );
+    }
+
+    return 1;
 }
 
 sub check_encryption {
-	my $self = shift;
-	my %par = @_;
-	my ($entity, $encrypted_text_sref) = @par{'entity','encrypted_text_sref'};
+    my $self = shift;
+    my %par  = @_;
+    my  ($entity, $encrypted_text_sref) =
+    @par{'entity','encrypted_text_sref'};
 
-	my $is_armor;
-	if ( $entity->effective_type =~ m!multipart/encrypted!i ) {
-		#-- is this a valid RFC 3156 multipart/encrypted entity?
-		die "Entity must have two parts"
-			if $entity->parts != 2;
-		die "Entity is not OpenPGP encrypted"
-			unless $entity->parts(0)->effective_type =~
-				m!application/pgp-encrypted!i;
-		$$encrypted_text_sref = $entity->parts(1)->body_as_string;
+    my $is_armor;
+    if ( $entity->effective_type =~ m!multipart/encrypted!i ) {
 
-	} elsif ( $entity->bodyhandle ) {
-		#-- probably an ASCII armor encrypted entity
-		#-- (we need the *decoded* data here - hopefully the
-		#--  MIME::Parser had decode_body(1) set).
-		$$encrypted_text_sref = $entity->bodyhandle->as_string;
-		die "Entity is not OpenPGP encrypted"
-		    unless
-			$$encrypted_text_sref =~ /^-----BEGIN PGP MESSAGE-----/m;
-		$is_armor = 1;
-	} else {
-		die "Entity is not multipart/encrypted and has no body";
-	}
-	
-	return $is_armor;
+        #-- is this a valid RFC 3156 multipart/encrypted entity?
+        die "Entity must have two parts"
+            if $entity->parts != 2;
+        die "Entity is not OpenPGP encrypted"
+            unless $entity->parts(0)->effective_type
+            =~ m!application/pgp-encrypted!i;
+        $$encrypted_text_sref = $entity->parts(1)->body_as_string;
+
+    }
+    elsif ( $entity->bodyhandle ) {
+
+        #-- probably an ASCII armor encrypted entity
+        #-- (we need the *decoded* data here - hopefully the
+        #--  MIME::Parser had decode_body(1) set).
+        $$encrypted_text_sref = $entity->bodyhandle->as_string;
+        die "Entity is not OpenPGP encrypted"
+            unless $$encrypted_text_sref =~ /^-----BEGIN PGP MESSAGE-----/m;
+        $is_armor = 1;
+    }
+    else {
+        die "Entity is not multipart/encrypted and has no body";
+    }
+
+    return $is_armor;
 }
 
 sub perform_multiplexed_gpg_io {
-	my $self = shift;
-	my %par = @_;
-	my  ($data_fh, $data_canonify, $stdin_fh, $stderr_fh, $stdout_fh) =
-	@par{'data_fh','data_canonify','stdin_fh','stderr_fh','stdout_fh'};
-	my  ($stderr_sref, $stdout_sref) =
-	@par{'stderr_sref','stdout_sref'};
+    my $self = shift;
+    my %par  = @_;
+    my  ($data_fh, $data_canonify, $stdin_fh, $stderr_fh) =
+    @par{'data_fh','data_canonify','stdin_fh','stderr_fh'};
+    my  ($stdout_fh, $status_fh, $stderr_sref, $stdout_sref) =
+    @par{'stdout_fh','status_fh','stderr_sref','stdout_sref'};
+    my  ($status_sref) =
+    $par{'status_sref'};
 
-	#-- perl < 5.6 compatibility: seek() and read() work
-	#-- on native GLOB filehandle only, so dertmine type
-	#-- of filehandle here
-	my $data_fh_glob = ref $data_fh eq 'GLOB';
+    #-- perl < 5.6 compatibility: seek() and read() work
+    #-- on native GLOB filehandle only, so dertmine type
+    #-- of filehandle here
+    my $data_fh_glob = ref $data_fh eq 'GLOB';
 
-	#-- rewind the data filehandle
-	if ( $data_fh_glob ) {
-		seek $data_fh, 0, 0;
-	} else {
-		$data_fh->seek(0, 0);
-	}
+    #-- rewind the data filehandle
+    if ($data_fh_glob) {
+        seek $data_fh, 0, 0;
+    }
+    else {
+        $data_fh->seek( 0, 0 );
+    }
 
-	#-- create IO::Select objects for all
-	#-- filehandles in question
-	my $stdin  = IO::Select->new ($stdin_fh);
-	my $stderr = IO::Select->new ($stderr_fh);
-	my $stdout = IO::Select->new ($stdout_fh);
-	
-	my $buffer;
-	while ( 1 ) {
-		#-- as long we has data try to write
-		#-- it into gpg
-		while ( $data_fh && $stdin->can_write (0.1) ) {
-			if ( $data_fh_glob ? read $data_fh, $buffer, 1024 :
-					     $data_fh->read ($buffer,1024) ) {
-				#-- ok, got a block of data
-				if ( $data_canonify ) {
-					#-- canonify it if requested
-					$buffer =~ s/\x0A/\x0D\x0A/g;
-					$buffer =~ s/\x0D\x0D\x0A/\x0D\x0A/g;
-				}
-				#-- feed it into gpg
-				print $stdin_fh $buffer;
-			} else {
-				#-- no data read, close gpg's stdin
-				#-- and set the data filehandle to false
-				close $stdin_fh;
-				$data_fh = 0;
-			}
-		}
+    #-- create IO::Select objects for all
+    #-- filehandles in question
+    my $stdin  = IO::Select->new($stdin_fh);
+    my $stderr = IO::Select->new($stderr_fh);
+    my $stdout = IO::Select->new($stdout_fh);
+    my $status = $status_fh ? IO::Select->new($status_fh) : undef;
 
-		#-- probably we can read from gpg's stdout
-		while ( $stdout->can_read (0.1) ) {
-			last if eof($stdout_fh);
-			$$stdout_sref .= <$stdout_fh>;
-		}
+    my $buffer;
+    while (1) {
 
-		#-- probably we can read from gpg's stderr
-		while ( $stderr->can_read (0.1) ) {
-			last if eof($stderr_fh);
-			$$stderr_sref .= <$stderr_fh>;
-		}
+        #-- as long we has data try to write
+        #-- it into gpg
+        while ( $data_fh && $stdin->can_write(0.1) ) {
+            if ( $data_fh_glob
+                ? read $data_fh,
+                $buffer, 1024
+                : $data_fh->read( $buffer, 1024 ) ) {
 
-		#-- we're finished if no more data left
-		#-- and both gpg's stdout and stderr
-		#-- are at eof.
-		return if !$data_fh and eof($stderr_fh) and eof($stdout_fh);
-	}
+                #-- ok, got a block of data
+                if ($data_canonify) {
 
-	1;
+                    #-- canonify it if requested
+                    $buffer =~ s/\x0A/\x0D\x0A/g;
+                    $buffer =~ s/\x0D\x0D\x0A/\x0D\x0A/g;
+                }
+
+                #-- feed it into gpg
+                print $stdin_fh $buffer;
+            }
+            else {
+
+                #-- no data read, close gpg's stdin
+                #-- and set the data filehandle to false
+                close $stdin_fh;
+                $data_fh = 0;
+            }
+        }
+
+        #-- probably we can read from gpg's stdout
+        while ( $stdout->can_read(0.1) ) {
+            last if eof($stdout_fh);
+            $$stdout_sref .= <$stdout_fh>;
+        }
+
+        #-- probably we can read from gpg's stderr
+        while ( $stderr->can_read(0.1) ) {
+            last if eof($stderr_fh);
+            $$stderr_sref .= <$stderr_fh>;
+        }
+
+        #-- probably we can read from gpg's status
+        if ($status) {
+            while ( $status->can_read(0.1) ) {
+                last if eof($status_fh);
+                $$status_sref .= <$status_fh>;
+            }
+        }
+
+        #-- we're finished if no more data left
+        #-- and both gpg's stdout and stderr
+        #-- are at eof.
+        return
+            if !$data_fh
+            && eof($stderr_fh)
+            && eof($stdout_fh)
+            && ( !$status_fh || eof($status_fh) );
+    }
+
+    1;
 }
 
 sub query_keyring {
-	my $self = shift;
-	my %par = @_;
-	my ($search) = $par{'search'};
+    my $self     = shift;
+    my %par      = @_;
+    my ($search) = $par{'search'};
 
-	#-- ignore any PIPE signals, in case of gpg exited
-	#-- early before we fed our data into it.
-	local $SIG{PIPE} = 'IGNORE';
+    #-- ignore any PIPE signals, in case of gpg exited
+    #-- early before we fed our data into it.
+    local $SIG{PIPE} = 'IGNORE';
 
-	#-- we parse gpg's output and rely on english
-	local $ENV{LC_ALL} = "C";
+    #-- we parse gpg's output and rely on english
+    local $ENV{LC_ALL} = "C";
 
-	#-- get a GnuPG::Interface
-	my $gpg = $self->new_gpg_interface;
+    #-- get a GnuPG::Interface
+    my $gpg = $self->new_gpg_interface;
 
-	#-- initialize Handles
-	my $stdout  = IO::Handle->new;
-	my $stderr  = IO::Handle->new;
-	my $handles = GnuPG::Handles->new (
-		stdout => $stdout,
-		stderr => $stderr,
-	);
-	
-	#-- execute gpg --list-public-keys
-	my $pid = $gpg->wrap_call (
-		handles      => $handles,
-		commands     => [ "--list-keys", "--with-colons" ],
-		command_args => [ $search ],
-	);
+    #-- initialize Handles
+    my $stdout  = IO::Handle->new;
+    my $stderr  = IO::Handle->new;
+    my $handles = GnuPG::Handles->new(
+        stdout => $stdout,
+        stderr => $stderr,
+    );
 
-	#-- fetch gpg's STDERR
-	my $output_stderr;
-	$output_stderr .= $_ while <$stderr>;
-	close $stderr;
+    #-- execute gpg --list-public-keys
+    my $pid = $gpg->wrap_call(
+        handles      => $handles,
+        commands     => [ "--list-keys", "--with-colons" ],
+        command_args => [$search],
+    );
 
-	#-- fetch gpg's STDOUT
-	my $output_stdout;
-	$output_stdout .= $_ while <$stdout>;
-	close $stdout;
+    #-- fetch gpg's STDERR
+    my $output_stderr;
+    $output_stderr .= $_ while <$stderr>;
+    close $stderr;
 
-	#-- wait on gpg exit
-	waitpid $pid, 0;
+    #-- fetch gpg's STDOUT
+    my $output_stdout;
+    $output_stdout .= $_ while <$stdout>;
+    close $stdout;
 
-	#-- needed for utf8 handling
-	require Encode if $] >= 5.008;
+    #-- wait on gpg exit
+    waitpid $pid, 0;
 
-	#-- grab key ID's and emails from output
-	my @result;
-	while ( $output_stdout =~ m!^pub:[^:]*:[^:]*:[^:]*:([^:]*):[^:]*:
-				         [^:]*:[^:]*:[^:]*:([^:]*)!mgx ) {
-		#-- Field 4 and 9 are key-ID and email address
-		my ($key_id, $key_mail) = ($1, $2);
+    #-- needed for utf8 handling
+    require Encode if $] >= 5.008;
 
-		#-- We need only the last 8 characters from the key-ID
-		($key_id) = ($key_id =~ /(........)$/);
+    #-- grab key ID's and emails from output
+    my @result;
+    while (
+        $output_stdout =~ m!^pub:[^:]*:[^:]*:[^:]*:([^:]*):[^:]*:
+				         [^:]*:[^:]*:[^:]*:([^:]*)!mgx
+        ) {
 
-		#-- $key_mail is quoted C-style (e.g. \x3a is a colon)
-		$key_mail =~ s/\\x(..)/chr(hex($1))/eg;
+        #-- Field 4 and 9 are key-ID and email address
+        my ( $key_id, $key_mail ) = ( $1, $2 );
 
-		#-- tell Perl that this variable is utf8 encoded
-		#-- (if Perl version is 5.8.0 or greater)
-		Encode::_utf8_on($key_mail) if $] >= 5.008;
+        #-- Shorten key id?
+        if ( !$self->get_use_long_key_ids ) {
+            ($key_id) = ( $key_id =~ /(........)$/ );
+        }
 
-		#-- fill result array
-		push @result, $key_id, $key_mail;
-	}
+        #-- $key_mail is quoted C-style (e.g. \x3a is a colon)
+        $key_mail =~ s/\\x(..)/chr(hex($1))/eg;
 
-	#-- return result: undef if nothing found, first key-id if
-	#-- a scalar is requested, all entries suitable for a hash
-	#-- slurp if an array is requested
-	return if not @result;
-	return $result[0] if not wantarray;
-	return @result;
+        #-- tell Perl that this variable is utf8 encoded
+        #-- (if Perl version is 5.8.0 or greater)
+        Encode::_utf8_on($key_mail) if $] >= 5.008;
+
+        #-- fill result array
+        push @result, $key_id, $key_mail;
+    }
+
+    #-- return result: undef if nothing found, first key-id if
+    #-- a scalar is requested, all entries suitable for a hash
+    #-- slurp if an array is requested
+    return            if not @result;
+    return $result[0] if not wantarray;
+    return @result;
 }
 
 sub build_rfc3156_multipart_entity {
-	my $self = shift;
-	my %par = @_;
-	my ($entity, $method) = @par{'entity','method'};
+    my $self = shift;
+    my %par  = @_;
+    my ($entity, $method) = @par{'entity','method'};
 
-	#-- check, if content-transfer-encoding follows the
-	#-- RFC 3156 requirement of being 7bit safe
-	$self->check_7bit_encoding_of_all_parts (
-		entity => $entity
-	);
+    #-- check, if content-transfer-encoding follows the
+    #-- RFC 3156 requirement of being 7bit safe
+    $self->check_7bit_encoding_of_all_parts( entity => $entity );
 
-	#-- build entity for signed/encrypted version; first make
-	#-- a copy of the given entity (deep copy of body
-	#-- files isn't necessary, body data isn't modified
-	#-- here).
-	my $rfc_entity = $entity->dup;
+    #-- build entity for signed/encrypted version; first make
+    #-- a copy of the given entity (deep copy of body
+    #-- files isn't necessary, body data isn't modified
+    #-- here).
+    my $rfc_entity = $entity->dup;
 
-	#-- determine the part, which is to be signed/encrypted
-	my ($work_part, $multipart);
-	if ( $rfc_entity->parts > 1 ) {
-		#-- the entity is multipart, so we need to build
-		#-- a new version of it with all parts, but without
-		#-- the rfc822 mail headers of the original entity
-		#-- (according RFC 3156 the signed/encrypted parts
-		#--  need MIME content headers only)
-		$work_part = MIME::Entity->build (
-			Type => "multipart/mixed"
-		);
-		$work_part->add_part($_) for $rfc_entity->parts;
-		$rfc_entity->parts([]);
-		$multipart = 1;
-	} else {
-		#-- the entity is single part, so just make it
-		#-- multipart and take the first (and only) part
-		$rfc_entity->make_multipart;
-		$work_part = $rfc_entity->parts(0);
-		$multipart = 0;
-	}
+    #-- determine the part, which is to be signed/encrypted
+    my ( $work_part, $multipart );
+    if ( $rfc_entity->parts > 1 ) {
 
-	#-- configure headers and add first part to the entity
-	if ( $method eq 'sign' ) {
-		#-- set correct MIME OpenPGP header für multipart/signed
-		$rfc_entity->head->mime_attr(
-			"Content-Type",
-			"multipart/signed"
-		);
-		$rfc_entity->head->mime_attr(
-			"Content-Type.protocol",
-			"application/pgp-signature"
-		);
-		$rfc_entity->head->mime_attr(
-			"Content-Type.micalg",
-			"pgp-".lc($self->get_digest)
-		);
-		
-		#-- add content part as first part
-		$rfc_entity->add_part($work_part) if $multipart;
-	} else {
-		#-- set correct MIME OpenPGP header für multipart/encrypted
-		$rfc_entity->head->mime_attr(
-			"Content-Type",
-			"multipart/encrypted"
-		);
-		$rfc_entity->head->mime_attr(
-			"Content-Type.protocol",
-			"application/pgp-encrypted"
-		);
+        #-- the entity is multipart, so we need to build
+        #-- a new version of it with all parts, but without
+        #-- the rfc822 mail headers of the original entity
+        #-- (according RFC 3156 the signed/encrypted parts
+        #--  need MIME content headers only)
+        $work_part = MIME::Entity->build( Type => "multipart/mixed" );
+        $work_part->add_part($_) for $rfc_entity->parts;
+        $rfc_entity->parts( [] );
+        $multipart = 1;
+    }
+    else {
 
-		#-- remove all parts
-		$rfc_entity->parts([]);
+        #-- the entity is single part, so just make it
+        #-- multipart and take the first (and only) part
+        $rfc_entity->make_multipart;
+        $work_part = $rfc_entity->parts(0);
+        $multipart = 0;
+    }
 
-		#-- and add OpenPGP version part as first part
-		$rfc_entity->attach (
-			Type        => "application/pgp-encrypted",
-			Disposition => "inline",
-			Data        => [ "Version: 1\n" ],
-			Encoding    => "7bit",
-		);
-	}
+    #-- configure headers and add first part to the entity
+    if ( $method eq 'sign' ) {
 
-	#-- return the newly created entitiy and the part to work on
-	return ($rfc_entity, $work_part);
+        #-- set correct MIME OpenPGP header für multipart/signed
+        $rfc_entity->head->mime_attr( "Content-Type", "multipart/signed" );
+        $rfc_entity->head->mime_attr( "Content-Type.protocol",
+            "application/pgp-signature" );
+        $rfc_entity->head->mime_attr( "Content-Type.micalg",
+            "pgp-" . lc( $self->get_digest ) );
+
+        #-- add content part as first part
+        $rfc_entity->add_part($work_part) if $multipart;
+    }
+    else {
+
+        #-- set correct MIME OpenPGP header für multipart/encrypted
+        $rfc_entity->head->mime_attr( "Content-Type", "multipart/encrypted" );
+        $rfc_entity->head->mime_attr( "Content-Type.protocol",
+            "application/pgp-encrypted" );
+
+        #-- remove all parts
+        $rfc_entity->parts( [] );
+
+        #-- and add OpenPGP version part as first part
+        $rfc_entity->attach(
+            Type        => "application/pgp-encrypted",
+            Disposition => "inline",
+            Data        => ["Version: 1\n"],
+            Encoding    => "7bit",
+        );
+    }
+
+    #-- return the newly created entitiy and the part to work on
+    return ( $rfc_entity, $work_part );
 }
 
 sub mime_sign {
-	my $self = shift;
-	my %par = @_;
-	my  ($key_id, $passphrase, $entity) =
-	@par{'key_id','passphrase','entity'};
+    my $self = shift;
+    my %par  = @_;
+    my  ($key_id, $passphrase, $entity) =
+    @par{'key_id','passphrase','entity'};
 
-	#-- ignore any PIPE signals, in case of gpg exited
-	#-- early before we fed our data into it.
-	local $SIG{PIPE} = 'IGNORE';
+    #-- ignore any PIPE signals, in case of gpg exited
+    #-- early before we fed our data into it.
+    local $SIG{PIPE} = 'IGNORE';
 
-	#-- we parse gpg's output and rely on english
-	local $ENV{LC_ALL} = "C";
+    #-- we parse gpg's output and rely on english
+    local $ENV{LC_ALL} = "C";
 
-	#-- get default key ID and passphrase, if not given
-	$key_id     = $self->get_default_key_id     if not defined $key_id;
-	$passphrase = $self->get_default_passphrase if not defined $passphrase;
-	
-	#-- check parameters
-	die "No key_id set"      if $key_id eq '';
-	die "No passphrase set"  if $passphrase eq '';
+    #-- get default key ID and passphrase, if not given
+    $key_id     = $self->get_default_key_id     if not defined $key_id;
+    $passphrase = $self->get_default_passphrase if not defined $passphrase;
 
-	#-- build entity for signed version
-	#-- (only the 2nd part with the signature data
-	#--  needs to be added later)
-	my ($signed_entity, $sign_part) =
-	   $self->build_rfc3156_multipart_entity (
-		entity => $entity,
-		method => "sign",
-	   );
+    #-- check parameters
+    die "No key_id set"     if $key_id     eq '';
+    die "No passphrase set" if $passphrase eq '';
 
-	#-- get a GnuPG::Interface
-	my $gpg = $self->new_gpg_interface (
-		options => {
-			armor	    => 1,
-			default_key => $key_id,
-		},
-		passphrase => $passphrase,
-	);
+    #-- build entity for signed version
+    #-- (only the 2nd part with the signature data
+    #--  needs to be added later)
+    my ( $signed_entity, $sign_part ) = $self->build_rfc3156_multipart_entity(
+        entity => $entity,
+        method => "sign",
+    );
 
-	#-- initialize handles
-	my $stdin   = IO::Handle->new;
-	my $stdout  = IO::Handle->new;
-	my $stderr  = IO::Handle->new;
-	my $handles = GnuPG::Handles->new (
-		stdin  => $stdin,
-		stdout => $stdout,
-		stderr => $stderr,
-	);
+    #-- get a GnuPG::Interface
+    my $gpg = $self->new_gpg_interface(
+        options => {
+            armor       => 1,
+            default_key => $key_id,
+        },
+        passphrase => $passphrase,
+    );
 
-	#-- execute gpg for signing
-	my $pid = $gpg->detach_sign ( handles => $handles );
+    #-- initialize handles
+    my $stdin   = IO::Handle->new;
+    my $stdout  = IO::Handle->new;
+    my $stderr  = IO::Handle->new;
+    my $handles = GnuPG::Handles->new(
+        stdin  => $stdin,
+        stdout => $stdout,
+        stderr => $stderr,
+    );
 
-	#-- put encoded entity data into temporary file
-	#-- (faster than in-memory operation)
-	my ($data_fh, $data_file) = File::Temp::tempfile();
-	unlink $data_file;
-	$sign_part->print($data_fh);
+    #-- execute gpg for signing
+    my $pid = $gpg->detach_sign( handles => $handles );
 
-	#-- perform I/O (multiplexed to prevent blocking)
-	my ($output_stdout, $output_stderr);
-	$self->perform_multiplexed_gpg_io (
-		data_fh       => $data_fh,
-		data_canonify => 1,
-		stdin_fh      => $stdin,
-		stderr_fh     => $stderr,
-		stdout_fh     => $stdout,
-		stderr_sref   => \$output_stderr,
-		stdout_sref   => \$output_stdout,
-	);
+    #-- put encoded entity data into temporary file
+    #-- (faster than in-memory operation)
+    my ( $data_fh, $data_file ) = File::Temp::tempfile();
+    unlink $data_file;
+    $sign_part->print($data_fh);
 
-	#-- close reader filehandles (stdin was closed
-	#-- by perform_multiplexed_gpg_io())
-	close $stdout;
-	close $stderr;
+    #-- perform I/O (multiplexed to prevent blocking)
+    my ( $output_stdout, $output_stderr );
+    $self->perform_multiplexed_gpg_io(
+        data_fh       => $data_fh,
+        data_canonify => 1,
+        stdin_fh      => $stdin,
+        stderr_fh     => $stderr,
+        stdout_fh     => $stdout,
+        stderr_sref   => \$output_stderr,
+        stdout_sref   => \$output_stdout,
+    );
 
-	#-- fetch zombie
-	waitpid $pid, 0;
-	die $output_stderr if $?;
+    #-- close reader filehandles (stdin was closed
+    #-- by perform_multiplexed_gpg_io())
+    close $stdout;
+    close $stderr;
 
-	#-- attach OpenPGP signature as second part
-	$signed_entity->attach (
-		Type        => "application/pgp-signature",
-		Disposition => "inline",
-		Data        => [ $output_stdout ],
-		Encoding    => "7bit",
-	);
-	
-	#-- debugging: create file with signed data
-	if ( $self->get_debug ) {
-		$self->save_debug_file (
-			name    => "mime-sign-data.txt",
-			data_fh => $data_fh,
-		);
-		$self->save_debug_file (
-			name => "mime-sign-entity.txt",
-			data => \$signed_entity->as_string,
-		);
-	}
+    #-- fetch zombie
+    waitpid $pid, 0;
+    die $output_stderr if $?;
 
-	#-- close temporary data filehandle
-	close $data_fh;
+    #-- attach OpenPGP signature as second part
+    $signed_entity->attach(
+        Type        => "application/pgp-signature",
+        Disposition => "inline",
+        Data        => [$output_stdout],
+        Encoding    => "7bit",
+    );
 
-	#-- return signed entity
-	return $signed_entity;
+    #-- debugging: create file with signed data
+    if ( $self->get_debug ) {
+        $self->save_debug_file(
+            name    => "mime-sign-data.txt",
+            data_fh => $data_fh,
+        );
+        $self->save_debug_file(
+            name => "mime-sign-entity.txt",
+            data => \$signed_entity->as_string,
+        );
+    }
+
+    #-- close temporary data filehandle
+    close $data_fh;
+
+    #-- return signed entity
+    return $signed_entity;
 }
 
-
 sub mime_encrypt {
-	my $self = shift;
-	my %par = @_;
-	my  ($entity, $recipients) =
-	@par{'entity','recipients'};
-	
-	#-- call mime_sign_encrypt() with no_sign option
-	return $self->mime_sign_encrypt (
-		entity		=> $entity,
-		recipients	=> $recipients,
-		_no_sign	=> 1,
-	);
+    my $self = shift;
+    my %par  = @_;
+    my ($entity, $recipients) = @par{'entity','recipients'};
+
+    #-- call mime_sign_encrypt() with no_sign option
+    return $self->mime_sign_encrypt(
+        entity     => $entity,
+        recipients => $recipients,
+        _no_sign   => 1,
+    );
 }
 
 sub mime_sign_encrypt {
-	my $self = shift;
-	my %par = @_;
-	my  ($key_id, $passphrase, $entity, $recipients, $_no_sign) =
-	@par{'key_id','passphrase','entity','recipients','_no_sign'};
+    my $self = shift;
+    my %par = @_;
+    my  ($key_id, $passphrase, $entity, $recipients, $_no_sign) =
+    @par{'key_id','passphrase','entity','recipients','_no_sign'};
 
-	#-- ignore any PIPE signals, in case of gpg exited
-	#-- early before we fed our data into it.
-	local $SIG{PIPE} = 'IGNORE';
+    #-- ignore any PIPE signals, in case of gpg exited
+    #-- early before we fed our data into it.
+    local $SIG{PIPE} = 'IGNORE';
 
-	#-- we parse gpg's output and rely on english
-	local $ENV{LC_ALL} = "C";
+    #-- we parse gpg's output and rely on english
+    local $ENV{LC_ALL} = "C";
 
-	#-- get default key ID and passphrase, if not given
-	$key_id     = $self->get_default_key_id     if not defined $key_id;
-	$passphrase = $self->get_default_passphrase if not defined $passphrase;
-	
-	#-- check parameters
-	die "No key_id set"      if not $_no_sign and $key_id eq '';
-	die "No passphrase set"  if not $_no_sign and $passphrase eq '';
+    #-- get default key ID and passphrase, if not given
+    $key_id     = $self->get_default_key_id     if not defined $key_id;
+    $passphrase = $self->get_default_passphrase if not defined $passphrase;
 
-	#-- build entity for encrypted version
-	#-- (only the 2nd part with the encrypted data
-	#--  needs to be added later)
-	my ($encrypted_entity, $encrypt_part) =
-	   $self->build_rfc3156_multipart_entity (
-		entity => $entity,
-		method => "encrypt",
-	   );
+    #-- check parameters
+    die "No key_id set"     if not $_no_sign and $key_id     eq '';
+    die "No passphrase set" if not $_no_sign and $passphrase eq '';
 
-	#-- get a GnuPG::Interface
-	my $gpg = $self->new_gpg_interface (
-		options => {
-			armor       => 1,
-			default_key => $key_id,
-		},
-		passphrase => $passphrase,
-	);
+    #-- build entity for encrypted version
+    #-- (only the 2nd part with the encrypted data
+    #--  needs to be added later)
+    my ( $encrypted_entity, $encrypt_part )
+        = $self->build_rfc3156_multipart_entity(
+        entity => $entity,
+        method => "encrypt",
+        );
 
-	#-- add recipients, but first extract the mail-adress
-	#-- part, otherwise gpg couldn't find keys for adresses
-	#-- with quoted printable encodings in the name part-
-	$recipients = $self->extract_mail_address (
-		recipients => $recipients,
-	);
-	$gpg->options->push_recipients($_) for @{$recipients};
+    #-- get a GnuPG::Interface
+    my $gpg = $self->new_gpg_interface(
+        options => {
+            armor       => 1,
+            default_key => $key_id,
+        },
+        passphrase => $passphrase,
+    );
 
-	#-- add default key to recipients if requested
-	$gpg->options->push_recipients($self->get_default_key_id)
-		if $self->get_default_key_encrypt and
-		   $self->get_default_key_id;
+    #-- add recipients, but first extract the mail-adress
+    #-- part, otherwise gpg couldn't find keys for adresses
+    #-- with quoted printable encodings in the name part-
+    $recipients = $self->extract_mail_address( recipients => $recipients, );
+    $gpg->options->push_recipients($_) for @{$recipients};
 
-	#-- initialize handles
-	my $stdin   = IO::Handle->new;
-	my $stdout  = IO::Handle->new;
-	my $stderr  = IO::Handle->new;
-	my $handles = GnuPG::Handles->new (
-		stdin  => $stdin,
-		stdout => $stdout,
-		stderr => $stderr,
-	);
+    #-- add default key to recipients if requested
+    $gpg->options->push_recipients( $self->get_default_key_id )
+        if $self->get_default_key_encrypt
+        and $self->get_default_key_id;
 
-	#-- execute gpg for encryption
-	my $pid;
-	if ( $_no_sign ) {
-		$pid = $gpg->encrypt ( handles => $handles );
-	} else {
-		$pid = $gpg->sign_and_encrypt ( handles => $handles );
-	}
+    #-- initialize handles
+    my $stdin   = IO::Handle->new;
+    my $stdout  = IO::Handle->new;
+    my $stderr  = IO::Handle->new;
+    my $handles = GnuPG::Handles->new(
+        stdin  => $stdin,
+        stdout => $stdout,
+        stderr => $stderr,
+    );
 
-	#-- put encoded entity data into temporary file
-	#-- (faster than in-memory operation)
-	my ($data_fh, $data_file) = File::Temp::tempfile();
-	unlink $data_file;
-	$encrypt_part->print($data_fh);
+    #-- execute gpg for encryption
+    my $pid;
+    if ($_no_sign) {
+        $pid = $gpg->encrypt( handles => $handles );
+    }
+    else {
+        $pid = $gpg->sign_and_encrypt( handles => $handles );
+    }
 
-	#-- perform I/O (multiplexed to prevent blocking)
-	my ($output_stdout, $output_stderr);
-	$self->perform_multiplexed_gpg_io (
-		data_fh       => $data_fh,
-		data_canonify => 1,
-		stdin_fh      => $stdin,
-		stderr_fh     => $stderr,
-		stdout_fh     => $stdout,
-		stderr_sref   => \$output_stderr,
-		stdout_sref   => \$output_stdout,
-	);
+    #-- put encoded entity data into temporary file
+    #-- (faster than in-memory operation)
+    my ( $data_fh, $data_file ) = File::Temp::tempfile();
+    unlink $data_file;
+    $encrypt_part->print($data_fh);
 
-	#-- close reader filehandles (stdin was closed
-	#-- by perform_multiplexed_gpg_io())
-	close $stdout;
-	close $stderr;
+    #-- perform I/O (multiplexed to prevent blocking)
+    my ( $output_stdout, $output_stderr );
+    $self->perform_multiplexed_gpg_io(
+        data_fh       => $data_fh,
+        data_canonify => 1,
+        stdin_fh      => $stdin,
+        stderr_fh     => $stderr,
+        stdout_fh     => $stdout,
+        stderr_sref   => \$output_stderr,
+        stdout_sref   => \$output_stdout,
+    );
 
-	#-- fetch zombie
-	waitpid $pid, 0;
-	die $output_stderr if $?;
+    #-- close reader filehandles (stdin was closed
+    #-- by perform_multiplexed_gpg_io())
+    close $stdout;
+    close $stderr;
 
-	#-- attach second part with the encrytped text
-	$encrypted_entity->attach (
-		Type        => "application/octet-stream",
-		Disposition => "inline",
-		Data        => [ $output_stdout ],
-		Encoding    => "7bit",
-	);
-	
-	#-- debugging: create file with encrypted data
-	if ( $self->get_debug ) {
-		$self->save_debug_file (
-			name    => "mime-enc-data.txt",
-			data_fh => $data_fh,
-		);
-		$self->save_debug_file (
-			name => "mime-enc-entity.txt",
-			data => \$encrypted_entity->as_string,
-		);
-	}
+    #-- fetch zombie
+    waitpid $pid, 0;
+    die $output_stderr if $?;
 
-	#-- close temporary data filehandle
-	close $data_fh;
+    #-- attach second part with the encrytped text
+    $encrypted_entity->attach(
+        Type        => "application/octet-stream",
+        Disposition => "inline",
+        Data        => [$output_stdout],
+        Encoding    => "7bit",
+    );
 
-	#-- return encrytped entity
-	return $encrypted_entity;
+    #-- debugging: create file with encrypted data
+    if ( $self->get_debug ) {
+        $self->save_debug_file(
+            name    => "mime-enc-data.txt",
+            data_fh => $data_fh,
+        );
+        $self->save_debug_file(
+            name => "mime-enc-entity.txt",
+            data => \$encrypted_entity->as_string,
+        );
+    }
+
+    #-- close temporary data filehandle
+    close $data_fh;
+
+    #-- return encrytped entity
+    return $encrypted_entity;
 }
 
 sub armor_sign {
-	my $self = shift;
-	my %par = @_;
-	my  ($key_id, $passphrase, $entity) =
-	@par{'key_id','passphrase','entity'};
+    my $self = shift;
+    my %par  = @_;
+    my  ($key_id, $passphrase, $entity) =
+    @par{'key_id','passphrase','entity'};
 
-	#-- ignore any PIPE signals, in case of gpg exited
-	#-- early before we fed our data into it.
-	local $SIG{PIPE} = 'IGNORE';
+    #-- ignore any PIPE signals, in case of gpg exited
+    #-- early before we fed our data into it.
+    local $SIG{PIPE} = 'IGNORE';
 
-	#-- we parse gpg's output and rely on english
-	local $ENV{LC_ALL} = "C";
+    #-- we parse gpg's output and rely on english
+    local $ENV{LC_ALL} = "C";
 
-	#-- get default key ID and passphrase, if not given
-	$key_id     = $self->get_default_key_id     if not defined $key_id;
-	$passphrase = $self->get_default_passphrase if not defined $passphrase;
-	
-	#-- check parameters
-	die "No key_id set"      if $key_id eq '';
-	die "No passphrase set"  if $passphrase eq '';
-	die "Entity has no body" if not $entity->bodyhandle;
+    #-- get default key ID and passphrase, if not given
+    $key_id     = $self->get_default_key_id     if not defined $key_id;
+    $passphrase = $self->get_default_passphrase if not defined $passphrase;
 
-	#-- check, if body content-transfer-encoding is 7bit safe
-	if ( not $self->get_no_strict_7bit_encoding ) {
-	    my $encoding = $entity->head->get("content-transfer-encoding");
-	    die "Content transfer encoding '$encoding' is not 7bit safe"
-		unless $encoding =~ /^(quoted-printable|base64|7bit)\s*$/i;
-	}
+    #-- check parameters
+    die "No key_id set"     if $key_id     eq '';
+    die "No passphrase set" if $passphrase eq '';
+    die "Entity has no body" if not $entity->bodyhandle;
 
-	#-- get a GnuPG::Interface, with ASCII armor enabled
-	my $gpg = $self->new_gpg_interface (
-		options => {
-			armor       => 1,
-			default_key => $key_id,
-		},
-		passphrase => $passphrase,
-	);
+    #-- check, if body content-transfer-encoding is 7bit safe
+    if ( not $self->get_no_strict_7bit_encoding ) {
+        my $encoding = $entity->head->get("content-transfer-encoding");
+        die "Content transfer encoding '$encoding' is not 7bit safe"
+            unless $encoding =~ /^(quoted-printable|base64|7bit)\s*$/i;
+    }
 
-	#-- initialize handles
-	my $stdin   = IO::Handle->new;
-	my $stdout  = IO::Handle->new;
-	my $stderr  = IO::Handle->new;
-	my $handles = GnuPG::Handles->new (
-		stdin  => $stdin,
-		stdout => $stdout,
-		stderr => $stderr,
-	);
+    #-- get a GnuPG::Interface, with ASCII armor enabled
+    my $gpg = $self->new_gpg_interface(
+        options => {
+            armor       => 1,
+            default_key => $key_id,
+        },
+        passphrase => $passphrase,
+    );
 
-	#-- execute gpg for signing
-	my $pid = $gpg->clearsign ( handles => $handles );
+    #-- initialize handles
+    my $stdin   = IO::Handle->new;
+    my $stdout  = IO::Handle->new;
+    my $stderr  = IO::Handle->new;
+    my $handles = GnuPG::Handles->new(
+        stdin  => $stdin,
+        stdout => $stdout,
+        stderr => $stderr,
+    );
 
-	#-- access the decoded data in the body
-	my $data_fh = $entity->bodyhandle->open("r");
+    #-- execute gpg for signing
+    my $pid = $gpg->clearsign( handles => $handles );
 
-	#-- perform I/O (multiplexed to prevent blocking)
-	my ($output_stdout, $output_stderr);
-	$self->perform_multiplexed_gpg_io (
-		data_fh       => $data_fh,
-		data_canonify => 1,
-		stdin_fh      => $stdin,
-		stderr_fh     => $stderr,
-		stdout_fh     => $stdout,
-		stderr_sref   => \$output_stderr,
-		stdout_sref   => \$output_stdout,
-	);
+    #-- access the decoded data in the body
+    my $data_fh = $entity->bodyhandle->open("r");
 
-	#-- close reader filehandles (stdin was closed
-	#-- by perform_multiplexed_gpg_io())
-	close $stdout;
-	close $stderr;
+    #-- perform I/O (multiplexed to prevent blocking)
+    my ( $output_stdout, $output_stderr );
+    $self->perform_multiplexed_gpg_io(
+        data_fh       => $data_fh,
+        data_canonify => 1,
+        stdin_fh      => $stdin,
+        stderr_fh     => $stderr,
+        stdout_fh     => $stdout,
+        stderr_sref   => \$output_stderr,
+        stdout_sref   => \$output_stdout,
+    );
 
-	#-- fetch zombie
-	waitpid $pid, 0;
-	die $output_stderr if $?;
+    #-- close reader filehandles (stdin was closed
+    #-- by perform_multiplexed_gpg_io())
+    close $stdout;
+    close $stderr;
 
-	#-- build entity for encrypted version
-	my $signed_entity = MIME::Entity->build (
-		Data     => [ $output_stdout ],
-	);
-	
-	#-- copy all header fields from original entity
-	foreach my $tag ( $entity->head->tags ) {
-		my @values = $entity->head->get($tag);
-		for (my $i=0; $i < @values; ++$i ) {
-			$signed_entity->head->replace (
-				$tag, $values[$i], $i
-			);
-		}
-	}
-	
-	#-- debugging: create file with signed data
-	if ( $self->get_debug ) {
-		$self->save_debug_file (
-			name => "armor-sign-data.txt",
-			data => \$entity->bodyhandle->as_string,
-		);
-		$self->save_debug_file (
-			name => "armor-sign-entity.txt",
-			data => \$signed_entity->as_string,
-		);
-	}
-	
-	#-- return the signed entity
-	return $signed_entity;
+    #-- fetch zombie
+    waitpid $pid, 0;
+    die $output_stderr if $?;
+
+    #-- build entity for encrypted version
+    my $signed_entity = MIME::Entity->build( Data => [$output_stdout], );
+
+    #-- copy all header fields from original entity
+    foreach my $tag ( $entity->head->tags ) {
+        my @values = $entity->head->get($tag);
+        for ( my $i = 0; $i < @values; ++$i ) {
+            $signed_entity->head->replace( $tag, $values[$i], $i );
+        }
+    }
+
+    #-- debugging: create file with signed data
+    if ( $self->get_debug ) {
+        $self->save_debug_file(
+            name => "armor-sign-data.txt",
+            data => \$entity->bodyhandle->as_string,
+        );
+        $self->save_debug_file(
+            name => "armor-sign-entity.txt",
+            data => \$signed_entity->as_string,
+        );
+    }
+
+    #-- return the signed entity
+    return $signed_entity;
 }
 
 sub armor_encrypt {
-	my $self = shift;
-	my %par = @_;
-	my  ($entity, $recipients) =
-	@par{'entity','recipients'};
-	
-	#-- call armor_sign_encrypt() with no_sign option
-	return $self->armor_sign_encrypt (
-		entity		=> $entity,
-		recipients	=> $recipients,
-		_no_sign	=> 1,
-	);
+    my $self = shift;
+    my %par  = @_;
+    my ($entity, $recipients) = @par{'entity','recipients'};
+
+    #-- call armor_sign_encrypt() with no_sign option
+    return $self->armor_sign_encrypt(
+        entity     => $entity,
+        recipients => $recipients,
+        _no_sign   => 1,
+    );
 }
 
 sub armor_sign_encrypt {
-	my $self = shift;
-	my %par = @_;
-	my  ($key_id, $passphrase, $entity, $recipients, $_no_sign) =
-	@par{'key_id','passphrase','entity','recipients','_no_sign'};
+    my $self = shift;
+    my %par = @_;
+    my  ($key_id, $passphrase, $entity, $recipients, $_no_sign) =
+    @par{'key_id','passphrase','entity','recipients','_no_sign'};
 
-	#-- ignore any PIPE signals, in case of gpg exited
-	#-- early before we fed our data into it.
-	local $SIG{PIPE} = 'IGNORE';
+    #-- ignore any PIPE signals, in case of gpg exited
+    #-- early before we fed our data into it.
+    local $SIG{PIPE} = 'IGNORE';
 
-	#-- we parse gpg's output and rely on english
-	local $ENV{LC_ALL} = "C";
+    #-- we parse gpg's output and rely on english
+    local $ENV{LC_ALL} = "C";
 
-	#-- get default key ID and passphrase, if not given
-	if ( not $_no_sign ) {
-	    $key_id     = $self->get_default_key_id     if not defined $key_id;
-	    $passphrase = $self->get_default_passphrase if not defined $passphrase;
-	    #-- check parameters
-	    die "No key_id set"      if $key_id eq '';
-	    die "No passphrase set"  if $passphrase eq '';
-	}
-	
-	#-- check parameters
-	die "Entity has no body" if not $entity->bodyhandle;
+    #-- get default key ID and passphrase, if not given
+    if ( not $_no_sign ) {
+        $key_id = $self->get_default_key_id if not defined $key_id;
+        $passphrase = $self->get_default_passphrase
+            if not defined $passphrase;
 
-	#-- get a GnuPG::Interface, with ASCII armor enabled
-	my $gpg = $self->new_gpg_interface (
-		options => {
-			armor       => 1,
-			default_key => $key_id,
-		},
-		passphrase => $passphrase,
-	);
+        #-- check parameters
+        die "No key_id set"     if $key_id     eq '';
+        die "No passphrase set" if $passphrase eq '';
+    }
 
-	#-- add recipients, but first extract the mail-adress
-	#-- part, otherwise gpg couldn't find keys for adresses
-	#-- with quoted printable encodings in the name part-
-	$recipients = $self->extract_mail_address (
-		recipients => $recipients,
-	);
-	$gpg->options->push_recipients($_) for @{$recipients};
+    #-- check parameters
+    die "Entity has no body" if not $entity->bodyhandle;
 
-	#-- add default key to recipients if requested
-	$gpg->options->push_recipients($self->get_default_key_id)
-		if $self->get_default_key_encrypt and
-		   $self->get_default_key_id;
+    #-- get a GnuPG::Interface, with ASCII armor enabled
+    my $gpg = $self->new_gpg_interface(
+        options => {
+            armor       => 1,
+            default_key => $key_id,
+        },
+        passphrase => $passphrase,
+    );
 
+    #-- add recipients, but first extract the mail-adress
+    #-- part, otherwise gpg couldn't find keys for adresses
+    #-- with quoted printable encodings in the name part-
+    $recipients = $self->extract_mail_address( recipients => $recipients, );
+    $gpg->options->push_recipients($_) for @{$recipients};
 
-	#-- initialize handles
-	my $stdin   = IO::Handle->new;
-	my $stdout  = IO::Handle->new;
-	my $stderr  = IO::Handle->new;
-	my $handles = GnuPG::Handles->new (
-		stdin  => $stdin,
-		stdout => $stdout,
-		stderr => $stderr,
-	);
+    #-- add default key to recipients if requested
+    $gpg->options->push_recipients( $self->get_default_key_id )
+        if $self->get_default_key_encrypt
+        and $self->get_default_key_id;
 
-	#-- execute gpg for encryption
-	my $pid;
-	if ( $_no_sign ) {
-		$pid = $gpg->encrypt ( handles => $handles );
-	} else {
-		$pid = $gpg->sign_and_encrypt ( handles => $handles );
-	}
+    #-- initialize handles
+    my $stdin   = IO::Handle->new;
+    my $stdout  = IO::Handle->new;
+    my $stderr  = IO::Handle->new;
+    my $handles = GnuPG::Handles->new(
+        stdin  => $stdin,
+        stdout => $stdout,
+        stderr => $stderr,
+    );
 
-	#-- access the decoded data in the body
-	my $data_fh = $entity->bodyhandle->open("r");
+    #-- execute gpg for encryption
+    my $pid;
+    if ($_no_sign) {
+        $pid = $gpg->encrypt( handles => $handles );
+    }
+    else {
+        $pid = $gpg->sign_and_encrypt( handles => $handles );
+    }
 
-	#-- perform I/O (multiplexed to prevent blocking)
-	my ($output_stdout, $output_stderr);
-	$self->perform_multiplexed_gpg_io (
-		data_fh       => $data_fh,
-		data_canonify => 0,
-		stdin_fh      => $stdin,
-		stderr_fh     => $stderr,
-		stdout_fh     => $stdout,
-		stderr_sref   => \$output_stderr,
-		stdout_sref   => \$output_stdout,
-	);
+    #-- access the decoded data in the body
+    my $data_fh = $entity->bodyhandle->open("r");
 
-	#-- close reader filehandles (stdin was closed
-	#-- by perform_multiplexed_gpg_io())
-	close $stdout;
-	close $stderr;
+    #-- perform I/O (multiplexed to prevent blocking)
+    my ( $output_stdout, $output_stderr );
+    $self->perform_multiplexed_gpg_io(
+        data_fh       => $data_fh,
+        data_canonify => 0,
+        stdin_fh      => $stdin,
+        stderr_fh     => $stderr,
+        stdout_fh     => $stdout,
+        stderr_sref   => \$output_stderr,
+        stdout_sref   => \$output_stdout,
+    );
 
-	#-- fetch zombie
-	waitpid $pid, 0;
-	die $output_stderr if $?;
+    #-- close reader filehandles (stdin was closed
+    #-- by perform_multiplexed_gpg_io())
+    close $stdout;
+    close $stderr;
 
-	#-- build entity for encrypted version
-	my $encrypted_entity = MIME::Entity->build (
-		Type     => "text/plain",
-		Encoding => "7bit",
-		Data     => [ $output_stdout ],
-	);
-	
-	#-- copy header fields from original entity
-	foreach my $tag ( $entity->head->tags ) {
-		next if $tag =~ /^content/i;
-		my @values = $entity->head->get($tag);
-		for (my $i=0; $i < @values; ++$i ) {
-			$encrypted_entity->head->replace (
-				$tag, $values[$i], $i
-			);
-		}
-	}
-	
-	#-- debugging: create file with signed data
-	if ( $self->get_debug ) {
-		$self->save_debug_file (
-			name => "armor-enc-data.txt",
-			data => \$entity->bodyhandle->as_string,
-		);
-		$self->save_debug_file (
-			name => "armor-enc-entity.txt",
-			data => \$encrypted_entity->as_string,
-		);
-	}
-	
-	#-- return the signed entity
-	return $encrypted_entity;
+    #-- fetch zombie
+    waitpid $pid, 0;
+    die $output_stderr if $?;
+
+    #-- build entity for encrypted version
+    my $encrypted_entity = MIME::Entity->build(
+        Type     => "text/plain",
+        Encoding => "7bit",
+        Data     => [$output_stdout],
+    );
+
+    #-- copy header fields from original entity
+    foreach my $tag ( $entity->head->tags ) {
+        next if $tag =~ /^content/i;
+        my @values = $entity->head->get($tag);
+        for ( my $i = 0; $i < @values; ++$i ) {
+            $encrypted_entity->head->replace( $tag, $values[$i], $i );
+        }
+    }
+
+    #-- debugging: create file with signed data
+    if ( $self->get_debug ) {
+        $self->save_debug_file(
+            name => "armor-enc-data.txt",
+            data => \$entity->bodyhandle->as_string,
+        );
+        $self->save_debug_file(
+            name => "armor-enc-entity.txt",
+            data => \$encrypted_entity->as_string,
+        );
+    }
+
+    #-- return the signed entity
+    return $encrypted_entity;
 }
 
-
 sub decrypt {
-	my $self = shift;
-	my %par = @_;
-	my ($entity, $passphrase) = @par{'entity','passphrase'};
+    my $self = shift;
+    my %par  = @_;
+    my ($entity, $passphrase) = @par{'entity','passphrase'};
 
-	#-- ignore any PIPE signals, in case of gpg exited
-	#-- early before we fed our data into it.
-	local $SIG{PIPE} = 'IGNORE';
+    #-- ignore any PIPE signals, in case of gpg exited
+    #-- early before we fed our data into it.
+    local $SIG{PIPE} = 'IGNORE';
 
-	#-- we parse gpg's output and rely on english
-	local $ENV{LC_ALL} = "C";
+    #-- we parse gpg's output and rely on english
+    local $ENV{LC_ALL} = "C";
 
-	#-- get default passphrase, if not given
-	$passphrase = $self->get_default_passphrase if not defined $passphrase;
+    #-- get default passphrase, if not given
+    $passphrase = $self->get_default_passphrase if not defined $passphrase;
 
-	#-- check if the entity is encrypted at all
-	#-- (dies if not)
-	my $encrypted_text;
-	my $is_armor = $self->check_encryption (
-		entity => $entity,
-		encrypted_text_sref => \$encrypted_text,
-	);
+    #-- check if the entity is encrypted at all
+    #-- (dies if not)
+    my $encrypted_text;
+    my $is_armor = $self->check_encryption(
+        entity              => $entity,
+        encrypted_text_sref => \$encrypted_text,
+    );
 
-	#-- get a GnuPG::Interface
-	my $gpg = $self->new_gpg_interface (
-		passphrase => $passphrase,
-	);
+    #-- get a GnuPG::Interface
+    my $gpg = $self->new_gpg_interface( passphrase => $passphrase, );
 
-	#-- initialize handles
-	my $stdin   = IO::Handle->new;
-	my $stdout  = IO::Handle->new;
-	my $stderr  = IO::Handle->new;
-	my $handles = GnuPG::Handles->new (
-		stdin  => $stdin,
-		stdout => $stdout,
-		stderr => $stderr,
-	);
+    #-- initialize handles
+    my $stdin  = IO::Handle->new;
+    my $stdout = IO::Handle->new;
+    my $stderr = IO::Handle->new;
+    my $status = IO::Handle->new;
 
-	#-- start gpg for decryption
-	my $pid = $gpg->decrypt ( handles => $handles );
+    my $handles = GnuPG::Handles->new(
+        stdin  => $stdin,
+        stdout => $stdout,
+        stderr => $stderr,
+        status => $status,
+    );
 
-	#-- put encoded entity data into temporary file
-	#-- (faster than in-memory operation)
-	my ($data_fh, $data_file) = File::Temp::tempfile();
-	unlink $data_file;
-	print $data_fh $encrypted_text;
+    #-- start gpg for decryption
+    my $pid = $gpg->decrypt( handles => $handles );
 
-	#-- perform I/O (multiplexed to prevent blocking)
-	my ($output_stdout, $output_stderr);
+    #-- put encoded entity data into temporary file
+    #-- (faster than in-memory operation)
+    my ( $data_fh, $data_file ) = File::Temp::tempfile();
+    unlink $data_file;
+    print $data_fh $encrypted_text;
 
-	$self->perform_multiplexed_gpg_io (
-		data_fh       => $data_fh,
-		data_canonify => 1,
-		stdin_fh      => $stdin,
-		stderr_fh     => $stderr,
-		stdout_fh     => $stdout,
-		stderr_sref   => \$output_stderr,
-		stdout_sref   => \$output_stdout,
-	);
+    #-- perform I/O (multiplexed to prevent blocking)
+    my ( $output_stdout, $output_stderr, $output_status );
 
-	#-- close reader filehandles (stdin was closed
-	#-- by perform_multiplexed_gpg_io())
-	close $stdout;
-	close $stderr;
+    $self->perform_multiplexed_gpg_io(
+        data_fh       => $data_fh,
+        data_canonify => 1,
+        stdin_fh      => $stdin,
+        stderr_fh     => $stderr,
+        stdout_fh     => $stdout,
+        status_fh     => $status,
+        stderr_sref   => \$output_stderr,
+        stdout_sref   => \$output_stdout,
+        status_sref   => \$output_status,
+    );
 
-	#-- fetch zombie
-	waitpid $pid, 0;
-	my $rc = $? >> 8;
-	#-- don't die here for return values != 0, because
-	#-- this also happens for encrypted+signed mails,
-	#-- where the public key is missing for verification
-	#-- and that's not intended here.
+    #-- close reader filehandles (stdin was closed
+    #-- by perform_multiplexed_gpg_io())
+    close $stdout;
+    close $stderr;
 
-	#-- parse decrypted text
-	my $parser = new MIME::Parser;
-	$parser->output_to_core(1);
+    #-- fetch zombie
+    waitpid $pid, 0;
+    my $rc = $? >> 8;
 
-	# for armor message (which usually contain no MIME entity)
-	# and if the first line seems to be no header, add an empty
-	# line at the top, otherwise the first line of a text message
-	# will be removed by the parser.
-	if ( $is_armor and $output_stdout !~ /^[\w-]+:/ ) {
-		$output_stdout = "\n".$output_stdout;
-	}
+    #-- don't die here for return values != 0, because
+    #-- this also happens for encrypted+signed mails,
+    #-- where the public key is missing for verification
+    #-- and that's not intended here.
 
-	my $dec_entity = $parser->parse_data([$output_stdout]);
+    #-- parse decrypted text
+    my $parser = new MIME::Parser;
+    $parser->output_to_core(1);
 
-	#-- Add headers from original entity
-	if ( $dec_entity->head->as_string eq '' ) {
-		$dec_entity->head ( $entity->head->dup );
-	} else {
-		#-- copy header fields from original entity
-		foreach my $tag ( $entity->head->tags ) {
-			next if $tag =~ /^content/i;
-			my @values = $entity->head->get($tag);
-			for (my $i=0; $i < @values; ++$i ) {
-				$dec_entity->head->replace (
-					$tag, $values[$i], $i
-				);
-			}
-		}
-	}
+    # for armor message (which usually contain no MIME entity)
+    # and if the first line seems to be no header, add an empty
+    # line at the top, otherwise the first line of a text message
+    # will be removed by the parser.
+    if ( $is_armor and $output_stdout !~ /^[\w-]+:/ ) {
+        $output_stdout = "\n" . $output_stdout;
+    }
 
-	#-- debugging: create file with encrypted data
-	if ( $self->get_debug ) {
-		$self->save_debug_file (
-			name => "dec-data.txt",
-			data => $dec_entity->as_string,
-		);
-	}
+    my $dec_entity = $parser->parse_data( [$output_stdout] );
 
-	#-- fetch information from gpg's stderr output
-	#-- and construct a Mail::GPG::Result object from it
-	my $result = Mail::GPG::Result->new (
-		mail_gpg     => $self,
-		is_encrypted => 1,
-		enc_ok       => ($output_stdout ne ''),
-		gpg_stdout   => \$output_stdout,
-		gpg_stderr   => \$output_stderr,
-		gpg_rc	     => $rc,
-	);
+    #-- Add headers from original entity
+    if ( $dec_entity->head->as_string eq '' ) {
+        $dec_entity->head( $entity->head->dup );
+    }
+    else {
 
-	#-- return decrypted entity and result object
-	return $dec_entity if not wantarray;
-	return ($dec_entity, $result);
+        #-- copy header fields from original entity
+        foreach my $tag ( $entity->head->tags ) {
+            next if $tag =~ /^content/i;
+            my @values = $entity->head->get($tag);
+            for ( my $i = 0; $i < @values; ++$i ) {
+                $dec_entity->head->replace( $tag, $values[$i], $i );
+            }
+        }
+    }
+
+    #-- debugging: create file with encrypted data
+    if ( $self->get_debug ) {
+        $self->save_debug_file(
+            name => "dec-data.txt",
+            data => $dec_entity->as_string,
+        );
+    }
+
+    #-- fetch information from gpg's stderr output
+    #-- and construct a Mail::GPG::Result object from it
+    my $result = Mail::GPG::Result->new(
+        mail_gpg   => $self,
+        gpg_stdout => \$output_stdout,
+        gpg_stderr => \$output_stderr,
+        gpg_status => \$output_status,
+        gpg_rc     => $rc,
+    );
+
+    #-- return decrypted entity and result object
+    return $dec_entity if not wantarray;
+    return ( $dec_entity, $result );
 }
 
 sub verify {
-	my $self = shift;
-	my %par = @_;
-	my ($entity) = $par{'entity'};
+    my $self     = shift;
+    my %par      = @_;
+    my ($entity) = $par{'entity'};
 
-	#-- ignore any PIPE signals, in case of gpg exited
-	#-- early before we fed our data into it.
-	local $SIG{PIPE} = 'IGNORE';
+    #-- ignore any PIPE signals, in case of gpg exited
+    #-- early before we fed our data into it.
+    local $SIG{PIPE} = 'IGNORE';
 
-	#-- we parse gpg's output and rely on english
-	local $ENV{LC_ALL} = "C";
+    #-- we parse gpg's output and rely on english
+    local $ENV{LC_ALL} = "C";
 
-	#-- check if the entity is signed
-	my ($signed_text, $signature_text);
+    #-- check if the entity is signed
+    my ( $signed_text, $signature_text );
 
-	if ( $entity->effective_type =~ m!multipart/signed!i ) {
-		#-- is this a valid RFC 3156 multipart/signed entity?
-		die "Entity must have two parts"
-			if $entity->parts != 2;
-		die "Entity is not OpenPGP signed"
-			unless $entity->parts(1)->effective_type =~
-				m!application/pgp-signature!i;
-		#-- hopefully the $entity was parsed with
-		#-- decode_bodies(0), otherwise this would
-		#-- return decoded data, but the signature
-		#-- is calculated on the *encoded* version.
-		$signed_text    = $entity->parts(0)->as_string;
-		$signature_text = $entity->parts(1)->body_as_string;
+    if ( $entity->effective_type =~ m!multipart/signed!i ) {
 
-	} elsif ( $entity->bodyhandle ) {
-		#-- probably an ASCII armor signed entity
-		#-- in that case we need the *decoded* data
-		$signed_text = $entity->bodyhandle->as_string;
-		die "Entity is not OpenPGP signed"
-			 unless $signed_text
-			 	=~ /^-----BEGIN PGP SIGNED MESSAGE-----/m;
-	} else {
-		die "Entity is not multipart/signed and has no body";
-	}
+        #-- is this a valid RFC 3156 multipart/signed entity?
+        die "Entity must have two parts"
+            if $entity->parts != 2;
+        die "Entity is not OpenPGP signed"
+            unless $entity->parts(1)->effective_type
+            =~ m!application/pgp-signature!i;
 
-	#-- get a GnuPG::Interface
-	my $gpg = $self->new_gpg_interface;
+        #-- hopefully the $entity was parsed with
+        #-- decode_bodies(0), otherwise this would
+        #-- return decoded data, but the signature
+        #-- is calculated on the *encoded* version.
+        $signed_text    = $entity->parts(0)->as_string;
+        $signature_text = $entity->parts(1)->body_as_string;
 
-	#-- initialize handles
-	my $stdin   = IO::Handle->new;
-	my $stdout  = IO::Handle->new;
-	my $stderr  = IO::Handle->new;
-	my $handles = GnuPG::Handles->new (
-		stdin  => $stdin,
-		stdout => $stdout,
-		stderr => $stderr,
-	);
+    }
+    elsif ( $entity->bodyhandle ) {
 
-	#-- distinguish between ascii amor embedded signature
-	#-- and detached signature (RFC 3156)
-	my ($pid, $sign_file, $sign_fh);
-	if ( $signature_text ) {
-		#-- signature is detached, save it to a temp file
-		($sign_fh, $sign_file) = File::Temp::tempfile();
-		print $sign_fh $signature_text;
-		close $sign_fh;
+        #-- probably an ASCII armor signed entity
+        #-- in that case we need the *decoded* data
+        $signed_text = $entity->bodyhandle->as_string;
+        die "Entity is not OpenPGP signed"
+            unless $signed_text =~ /^-----BEGIN PGP SIGNED MESSAGE-----/m;
+    }
+    else {
+        die "Entity is not multipart/signed and has no body";
+    }
 
-		#-- pass signature filename to gpg
-		$pid = $gpg->verify (
-			handles      => $handles,
-			command_args => [ $sign_file, "-" ],
-		);
-		
-	} else {
-		#-- ASCII armor message with embedded signature
-		$pid = $gpg->verify (
-			handles => $handles,
-		);
-	}
+    #-- get a GnuPG::Interface
+    my $gpg = $self->new_gpg_interface;
 
-	#-- put encoded entity data into temporary file
-	#-- (faster than in-memory operation)
-	my ($data_fh, $data_file) = File::Temp::tempfile();
-	unlink $data_file;
-	print $data_fh $signed_text;
+    #-- initialize handles
+    my $stdin  = IO::Handle->new;
+    my $stdout = IO::Handle->new;
+    my $stderr = IO::Handle->new;
+    my $status = IO::Handle->new;
 
-	#-- perform I/O (multiplexed to prevent blocking)
-	my ($output_stdout, $output_stderr);
-	$self->perform_multiplexed_gpg_io (
-		data_fh       => $data_fh,
-		data_canonify => 1,
-		stdin_fh      => $stdin,
-		stderr_fh     => $stderr,
-		stdout_fh     => $stdout,
-		stderr_sref   => \$output_stderr,
-		stdout_sref   => \$output_stdout,
-	);
+    my $handles = GnuPG::Handles->new(
+        stdin  => $stdin,
+        stdout => $stdout,
+        stderr => $stderr,
+        status => $status,
+    );
 
-	#-- close reader filehandles (stdin was closed
-	#-- by perform_multiplexed_gpg_io())
-	close $stdout;
-	close $stderr;
+    #-- distinguish between ascii amor embedded signature
+    #-- and detached signature (RFC 3156)
+    my ( $pid, $sign_file, $sign_fh );
+    if ($signature_text) {
 
-	#-- fetch zombie
-	waitpid $pid, 0;
-	my $rc = $? >> 8;
+        #-- signature is detached, save it to a temp file
+        ( $sign_fh, $sign_file ) = File::Temp::tempfile();
+        print $sign_fh $signature_text;
+        close $sign_fh;
 
-	#-- remove detached signature file
-	unlink $sign_file if defined $sign_file;
+        #-- pass signature filename to gpg
+        $pid = $gpg->verify(
+            handles      => $handles,
+            command_args => [ $sign_file, "-" ],
+        );
 
-	#-- debugging: create file with verified data
-	if ( $self->get_debug ) {
-		$self->save_debug_file (
-			name => "verify-data.txt",
-			data => \$signed_text,
-		);
-	}
+    }
+    else {
 
-	#-- construct a Mail::GPG::Result object from
-	#-- gpg's stderr output
-	my $result = Mail::GPG::Result->new (
-		mail_gpg    => $self,
-		is_signed   => 1,
-		sign_ok	    => !$rc,
-		gpg_stdout  => \$output_stdout,
-		gpg_stderr  => \$output_stderr,
-		gpg_rc	    => $rc,
-	);
+        #-- ASCII armor message with embedded signature
+        $pid = $gpg->verify( handles => $handles, );
+    }
 
-	#-- return result object
-	return $result;	
+    #-- put encoded entity data into temporary file
+    #-- (faster than in-memory operation)
+    my ( $data_fh, $data_file ) = File::Temp::tempfile();
+    unlink $data_file;
+    print $data_fh $signed_text;
+
+    #-- perform I/O (multiplexed to prevent blocking)
+    my ( $output_stdout, $output_stderr, $output_status );
+    $self->perform_multiplexed_gpg_io(
+        data_fh       => $data_fh,
+        data_canonify => 1,
+        stdin_fh      => $stdin,
+        stderr_fh     => $stderr,
+        stdout_fh     => $stdout,
+        status_fh     => $status,
+        stderr_sref   => \$output_stderr,
+        stdout_sref   => \$output_stdout,
+        status_sref   => \$output_status,
+    );
+
+    #-- close reader filehandles (stdin was closed
+    #-- by perform_multiplexed_gpg_io())
+    close $stdout;
+    close $stderr;
+
+    #-- fetch zombie
+    waitpid $pid, 0;
+    my $rc = $? >> 8;
+
+    #-- remove detached signature file
+    unlink $sign_file if defined $sign_file;
+
+    #-- debugging: create file with verified data
+    if ( $self->get_debug ) {
+        $self->save_debug_file(
+            name => "verify-data.txt",
+            data => \$signed_text,
+        );
+    }
+
+    #-- construct a Mail::GPG::Result object from
+    #-- gpg's stderr output
+    my $result = Mail::GPG::Result->new(
+        mail_gpg   => $self,
+        gpg_stdout => \$output_stdout,
+        gpg_stderr => \$output_stderr,
+        gpg_status => \$output_status,
+        gpg_rc     => $rc,
+    );
+
+    #-- return result object
+    return $result;
 }
 
 sub is_encrypted {
-	my $self = shift;
-	my %par = @_;
-	my ($entity) = $par{'entity'};
+    my $self     = shift;
+    my %par      = @_;
+    my ($entity) = $par{'entity'};
 
-	if ( $entity->effective_type =~ m!multipart/encrypted!i ) {
-		#-- is this a valid RFC 3156 multipart/encrypted entity?
-		return 0 if $entity->parts != 2;
-		return 0 unless $entity->parts(0)->effective_type =~
-				m!application/pgp-encrypted!i;
+    if ( $entity->effective_type =~ m!multipart/encrypted!i ) {
 
-	} elsif ( $entity->bodyhandle ) {
-		#-- probably an ASCII armor encrypted entity
-		#-- check the decoded body for a PGP message
-		return 0 unless $entity->bodyhandle->as_string
-			 	=~ /^-----BEGIN PGP MESSAGE-----/m;
-	} else {
-		return 0;
-	}
+        #-- is this a valid RFC 3156 multipart/encrypted entity?
+        return 0 if $entity->parts != 2;
+        return 0
+            unless $entity->parts(0)->effective_type
+            =~ m!application/pgp-encrypted!i;
 
-	return 1;
+    }
+    elsif ( $entity->bodyhandle ) {
+
+        #-- probably an ASCII armor encrypted entity
+        #-- check the decoded body for a PGP message
+        return 0
+            unless $entity->bodyhandle->as_string
+            =~ /^-----BEGIN PGP MESSAGE-----/m;
+    }
+    else {
+        return 0;
+    }
+
+    return 1;
 }
 
 sub is_signed {
-	my $self = shift;
-	my %par = @_;
-	my ($entity) = $par{'entity'};
+    my $self     = shift;
+    my %par      = @_;
+    my ($entity) = $par{'entity'};
 
-	if ( $entity->effective_type =~ m!multipart/signed!i ) {
-		#-- is this a valid RFC 3156 multipart/signed entity?
-		return 0 if $entity->parts != 2;
-		return 0 unless $entity->parts(1)->effective_type =~
-				m!application/pgp-signature!i;
+    if ( $entity->effective_type =~ m!multipart/signed!i ) {
 
-	} elsif ( $entity->bodyhandle ) {
-		#-- probably an ASCII armor signed entity,
-		#-- check the decoded body for a PGP message
-		return 0 unless $entity->bodyhandle->as_string
-			 	=~ /^-----BEGIN PGP SIGNED MESSAGE-----/m;
-	} else {
-		return 0;
-	}
+        #-- is this a valid RFC 3156 multipart/signed entity?
+        return 0 if $entity->parts != 2;
+        return 0
+            unless $entity->parts(1)->effective_type
+            =~ m!application/pgp-signature!i;
 
-	return 1;
+    }
+    elsif ( $entity->bodyhandle ) {
+
+        #-- probably an ASCII armor signed entity,
+        #-- check the decoded body for a PGP message
+        return 0
+            unless $entity->bodyhandle->as_string
+            =~ /^-----BEGIN PGP SIGNED MESSAGE-----/m;
+    }
+    else {
+        return 0;
+    }
+
+    return 1;
 }
 
 sub is_signed_quick {
-	my $self = shift;
-	my %par = @_;
-	my  ($mail_fh, $mail_sref) =
-	@par{'mail_fh','mail_sref'};
+    my $self = shift;
+    my %par  = @_;
+    my ($mail_fh, $mail_sref) = @par{'mail_fh', 'mail_sref'};
 
-	croak "Specify mail_fh xor mail_sref" 
-		unless $mail_fh xor $mail_sref;
+    croak "Specify mail_fh xor mail_sref"
+        unless $mail_fh xor $mail_sref;
 
-	if ( defined $mail_fh ) {
-		#-- rewind filehandle
-		seek($mail_fh, 0, 0);
+    if ( defined $mail_fh ) {
 
-		#-- read filehandle and do rough checks
-		local($_);
-		my $is_signed = 0;
-		while ( <$mail_fh> ) {
-			if ( m!application/pgp-signature!i ) {
-				$is_signed = 1;
-				last;
-			}
-			if ( /^-----BEGIN PGP SIGNED MESSAGE-----/ ) {
-				$is_signed = 1;
-				last;
-			}
-		}
+        #-- rewind filehandle
+        seek( $mail_fh, 0, 0 );
 
-		#-- rewind filehandle again
-		seek($mail_fh, 0, 0);
+        #-- read filehandle and do rough checks
+        local ($_);
+        my $is_signed = 0;
+        while (<$mail_fh>) {
+            if (m!application/pgp-signature!i) {
+                $is_signed = 1;
+                last;
+            }
+            if (/^-----BEGIN PGP SIGNED MESSAGE-----/) {
+                $is_signed = 1;
+                last;
+            }
+        }
 
-		#-- return sign status
-		return $is_signed;
+        #-- rewind filehandle again
+        seek( $mail_fh, 0, 0 );
 
-	} elsif ( defined $mail_sref ) {
-		#-- looks like a RFC 3156 multipart/signed entity?
-		return 1 if $$mail_sref =~ m!application/pgp-signature!i;
+        #-- return sign status
+        return $is_signed;
 
-		#-- or ASCII armor signed?
-		return 1 if $$mail_sref =~ m!^-----BEGIN PGP SIGNED MESSAGE-----!m;
+    }
+    elsif ( defined $mail_sref ) {
 
-		#-- not signed at all
-		return 0,
-	}
+        #-- looks like a RFC 3156 multipart/signed entity?
+        return 1 if $$mail_sref =~ m!application/pgp-signature!i;
 
-	return 1;
+        #-- or ASCII armor signed?
+        return 1 if $$mail_sref =~ m!^-----BEGIN PGP SIGNED MESSAGE-----!m;
+
+        #-- not signed at all
+        return 0,;
+    }
+
+    return 1;
 }
 
 sub get_decrypt_key {
-	my $self = shift;
-	my %par = @_;
-	my ($entity) = $par{'entity'};
+    my $self     = shift;
+    my %par      = @_;
+    my ($entity) = $par{'entity'};
 
-	#-- ignore any PIPE signals, in case of gpg exited
-	#-- early before we fed our data into it.
-	local $SIG{PIPE} = 'IGNORE';
+    #-- ignore any PIPE signals, in case of gpg exited
+    #-- early before we fed our data into it.
+    local $SIG{PIPE} = 'IGNORE';
 
-	#-- we parse gpg's output and rely on english
-	local $ENV{LC_ALL} = "C";
+    #-- we parse gpg's output and rely on english
+    local $ENV{LC_ALL} = "C";
 
-	#-- check if the entity is encrypted at all
-	#-- (dies if not)
-	my $encrypted_text;
-	my $is_armor = $self->check_encryption (
-		entity => $entity,
-		encrypted_text_sref => \$encrypted_text,
-	);
+    #-- check if the entity is encrypted at all
+    #-- (dies if not)
+    my $encrypted_text;
+    my $is_armor = $self->check_encryption(
+        entity              => $entity,
+        encrypted_text_sref => \$encrypted_text,
+    );
 
-	#-- get a GnuPG::Interface
-	my $gpg = $self->new_gpg_interface;
+    #-- get a GnuPG::Interface
+    my $gpg = $self->new_gpg_interface;
 
-	#-- initialize handles
-	my $stdin   = IO::Handle->new;
-	my $stdout  = IO::Handle->new;
-	my $stderr  = IO::Handle->new;
-	my $handles = GnuPG::Handles->new (
-		stdin  => $stdin,
-		stdout => $stdout,
-		stderr => $stderr,
-	);
+    #-- initialize handles
+    my $stdin   = IO::Handle->new;
+    my $stdout  = IO::Handle->new;
+    my $stderr  = IO::Handle->new;
+    my $handles = GnuPG::Handles->new(
+        stdin  => $stdin,
+        stdout => $stdout,
+        stderr => $stderr,
+    );
 
-	#-- start gpg for decryption
-	my $pid = $gpg->wrap_call(
-		handles      => $handles,
-		commands     => [ "--decrypt", "--batch", "--list-only",
-				  "--status-fd", "1"  ],
-	);
+    #-- start gpg for decryption
+    my $pid = $gpg->wrap_call(
+        handles  => $handles,
+        commands =>
+            [ "--decrypt", "--batch", "--list-only", "--status-fd", "1" ],
+    );
 
-	#-- put encoded entity data into temporary file
-	#-- (faster than in-memory operation)
-	my ($data_fh, $data_file) = File::Temp::tempfile();
-	unlink $data_file;
-	print $data_fh $encrypted_text;
+    #-- put encoded entity data into temporary file
+    #-- (faster than in-memory operation)
+    my ( $data_fh, $data_file ) = File::Temp::tempfile();
+    unlink $data_file;
+    print $data_fh $encrypted_text;
 
-	#-- perform I/O (multiplexed to prevent blocking)
-	my ($output_stdout, $output_stderr);
-	$self->perform_multiplexed_gpg_io (
-		data_fh       => $data_fh,
-		data_canonify => 1,
-		stdin_fh      => $stdin,
-		stderr_fh     => $stderr,
-		stdout_fh     => $stdout,
-		stderr_sref   => \$output_stderr,
-		stdout_sref   => \$output_stdout,
-	);
+    #-- perform I/O (multiplexed to prevent blocking)
+    my ( $output_stdout, $output_stderr );
+    $self->perform_multiplexed_gpg_io(
+        data_fh       => $data_fh,
+        data_canonify => 1,
+        stdin_fh      => $stdin,
+        stderr_fh     => $stderr,
+        stdout_fh     => $stdout,
+        stderr_sref   => \$output_stderr,
+        stdout_sref   => \$output_stdout,
+    );
 
-	#-- close reader filehandles (stdin was closed
-	#-- by perform_multiplexed_gpg_io())
-	close $stdout;
-	close $stderr;
+    #-- close reader filehandles (stdin was closed
+    #-- by perform_multiplexed_gpg_io())
+    close $stdout;
+    close $stderr;
 
-	#-- fetch zombie
-	waitpid $pid, 0;
-	my $rc = $? >> 8;
+    #-- fetch zombie
+    waitpid $pid, 0;
+    my $rc = $? >> 8;
 
-	#-- grep ENC_TO and NO_SECKEY items
-	my (@enc_to_keys, %no_sec_keys, $line);
-	while ( $output_stdout =~ /^(.*)$/mg ) {
-		$line = $1;
-		push @enc_to_keys, $1 if $line =~ /ENC_TO\s+([^\s]+)/;
-		$no_sec_keys{$1} = 1  if $line =~ /NO_SECKEY\s+([^\s]+)/;
-	}
-	#-- find first key we have the secret portion of
-	my $key_id;
-	foreach my $k ( @enc_to_keys ) {
-	      if ( not exists $no_sec_keys{$k} ) {
-		      $key_id = $k;
-		      last;
-	      }
-	}
+    #-- grep ENC_TO and NO_SECKEY items
+    my ( @enc_to_keys, %no_sec_keys, $line );
+    while ( $output_stdout =~ /^(.*)$/mg ) {
+        $line = $1;
+        push @enc_to_keys, $1 if $line =~ /ENC_TO\s+([^\s]+)/;
+        $no_sec_keys{$1} = 1 if $line =~ /NO_SECKEY\s+([^\s]+)/;
+    }
 
-	#-- get mail address of this key
-	my $key_mail;
-	($key_id, $key_mail) = $self->query_keyring ( search => $key_id );
+    #-- find first key we have the secret portion of
+    my $key_id;
+    foreach my $k (@enc_to_keys) {
+        if ( not exists $no_sec_keys{$k} ) {
+            $key_id = $k;
+            last;
+        }
+    }
 
-	return $key_id if not wantarray;
-	return ($key_id, $key_mail);
+    #-- get mail address of this key
+    my $key_mail;
+    ( $key_id, $key_mail ) = $self->query_keyring( search => $key_id );
+
+    return $key_id if not wantarray;
+    return ( $key_id, $key_mail );
 }
 
 sub extract_mail_address {
-	my $self = shift;
-	my %par = @_;
-	my ($recipients) = $par{'recipients'};
+    my $self         = shift;
+    my %par          = @_;
+    my ($recipients) = $par{'recipients'};
 
-	my @recipients;
-	
-	my $address;
-	foreach my $r ( @{$recipients} ) {
-		($address) = Mail::Address->parse ($r);
-		push @recipients, $address ? $address->address :
-					     $r;
-	}
-	return \@recipients;
+    my @recipients;
+
+    my $address;
+    foreach my $r ( @{$recipients} ) {
+        ($address) = Mail::Address->parse($r);
+        push @recipients, $address
+            ? $address->address
+            : $r;
+    }
+    return \@recipients;
 }
 
 sub parse {
-	my $thing = shift;
-	my %par = @_;
-	my ($mail_fh, $mail_sref) = @par{'mail_fh','mail_sref'};
-	
-	croak "Specify mail_fh xor mail_sref" 
-		unless $mail_fh xor $mail_sref;
+    my $thing = shift;
+    my %par   = @_;
+    my ($mail_fh, $mail_sref) = @par{'mail_fh','mail_sref'};
 
-	require MIME::Parser;
-	my ($parser, $entity);
+    croak "Specify mail_fh xor mail_sref"
+        unless $mail_fh xor $mail_sref;
 
-	#-- First parse without body decoding, which is correct
-	#-- for MIME messages
-	$parser = MIME::Parser->new;
-	$parser->decode_bodies(0);
-	$entity = $mail_fh ? 
-		$parser->parse($mail_fh):
-		$parser->parse_data($$mail_sref);
+    require MIME::Parser;
+    my ( $parser, $entity );
 
-	#-- Ok, if this is a MIME message
-	return $entity
-		if $entity->effective_type eq 'multipart/signed' or
-		   $entity->effective_type eq 'multipart/encrypted';
+    #-- First parse without body decoding, which is correct
+    #-- for MIME messages
+    $parser = MIME::Parser->new;
+    $parser->decode_bodies(0);
+    $entity = $mail_fh
+        ? $parser->parse($mail_fh)
+        : $parser->parse_data($$mail_sref);
 
-	#-- Now with body decoding, which is MIME::Parser's default
-	#-- and correct for OpenPGP armor message. Probably this
-	#-- isn't an OpenPGP message at all. But also in that case
-	#-- it's the best to return a decoded entity, as MIME::Parser
-	#-- usually does.
-	seek ($mail_fh, 0, 0) if $mail_fh;
-	$parser->decode_bodies(1);
-	$entity = $mail_fh ? 
-		$parser->parse($mail_fh):
-		$parser->parse_data($$mail_sref);
+    #-- Ok, if this is a MIME message
+    return $entity
+        if $entity->effective_type eq 'multipart/signed'
+        or $entity->effective_type eq 'multipart/encrypted';
 
-	return $entity;
+    #-- Now with body decoding, which is MIME::Parser's default
+    #-- and correct for OpenPGP armor message. Probably this
+    #-- isn't an OpenPGP message at all. But also in that case
+    #-- it's the best to return a decoded entity, as MIME::Parser
+    #-- usually does.
+    seek( $mail_fh, 0, 0 ) if $mail_fh;
+    $parser->decode_bodies(1);
+    $entity = $mail_fh
+        ? $parser->parse($mail_fh)
+        : $parser->parse_data($$mail_sref);
+
+    return $entity;
 }
 
 sub get_key_trust {
-	my $self = shift;
-	my %par = @_;
-	my ($key_id) = $par{'key_id'};
-	
-	my $gpg  = $self->new_gpg_interface;
-	my @keys = $gpg->get_public_keys($key_id);
+    my $self     = shift;
+    my %par      = @_;
+    my ($key_id) = $par{'key_id'};
 
-	croak "Request for key ID '$key_id' got multiple result"
-		if @keys > 1;
+    # Suppress warnings about unknown record type 'tru'
+    # in GnuPG::Interface
+    local $SIG{__WARN__} = sub {1};
 
-	return $keys[0]->owner_trust;
+    my $gpg  = $self->new_gpg_interface;
+    my @keys = $gpg->get_public_keys($key_id);
+
+    croak "Request for key ID '$key_id' got multiple result"
+        if @keys > 1;
+
+    return "" unless $keys[0];
+    return $keys[0]->owner_trust;
 }
 
 __END__
@@ -1598,6 +1643,13 @@ which should be signed or encrypted is firstly checked for
 a RFC 3156 conform 7bit encoding. Until you set
 B<no_strict_7bit_encoding> to true, an exception will be
 raised for non 7bit transparent encodings.
+
+=item B<use_long_key_ids>
+
+Mail::GPG prior version 1.0.4 always used short 32 bit key id's.
+By setting this attribute to TRUE you can switch to long
+64bit key id's. This affects the query_keyring() method and
+the key id's stored in Mail::GPG::Result.
 
 =item B<gpg_call>
 
@@ -2090,7 +2142,7 @@ can contact me in english as well.
 
 =head1 COPYRIGHT
 
-Copyright (C) 2004-2005 by Joern Reder, All Rights Reserved.
+Copyright (C) 2004-2006 by Joern Reder, All Rights Reserved.
 
 This library is free software; you can redistribute it
 and/or modify it under the same terms as Perl itself.

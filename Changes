@@ -1,6 +1,25 @@
-$Id: Changes,v 1.14 2005/12/22 23:09:32 joern Exp $
+$Id: Changes,v 1.16 2006/04/26 15:20:18 joern Exp $
 
 Revision history and release notes for Mail::GPG.
+
+1.0.4 Fri Apr 14, 2006, joern
+    Features:
+    - Report signer's key fingerprint with get_sign_fingerprint()
+      of Mail::GPG::Result. Requested by Peter Conrad <conrad AT
+      tivano.de>.
+    - Report multiple encryption recipients with the new methods
+      get_enc_key_ids() and get_enc_mails() of Mail::GPG::Result.
+    - Switch key id reporting from 32 to 64 bit length with
+      the Mail::GPG attribute use_long_key_ids.
+    - Suppress warnings from GnuPG::Interface about unknown recored
+      type 'tru', making my patch at least in conjunction with
+      Mail::GPG obsolete. The maintainer of GnuPG::Interface
+      obviously isn't interested in new releases of his module :(.
+    
+    Bugfixes:
+    - Don't rely on gnupg's exit code anywhere but inspect
+      its status fd output only. Thanks for the hint to
+      Peter Conrad.
 
 1.0.3 Fri Dec 22, 2005, joern
     Notes:
