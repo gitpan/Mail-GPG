@@ -1,6 +1,13 @@
-$Id: Changes,v 1.16 2006/04/26 15:20:18 joern Exp $
+$Id: Changes,v 1.17 2006/11/12 09:36:08 joern Exp $
 
 Revision history and release notes for Mail::GPG.
+
+1.0.5 Sun Nov 12, 2006, joern
+    Bugfixes:
+    - Applied a patch from Alwin Stolk <pastolk AT xs4all.nl>
+      which increases message decryption performance for big
+      mail bodies.
+    - Fixed POD typo. Thanks to Edward J. Sabol for the hint.
 
 1.0.4 Fri Apr 14, 2006, joern
     Features:
@@ -34,8 +41,7 @@ Revision history and release notes for Mail::GPG.
     Features:
     - Added a patch against MIME-tools 5.418, which hopefully
       gets into the official distribution soon. Thanks to
-      Edward J. Sabol <sabol AT alderaan.gsfc.nasa.gov> who
-      helped me to get this patch right.
+      Edward J. Sabol who helped me to get this patch right.
 
     Bugfixes:
     - Fixed a (potential) bug with Mail::GPG->get_key_trust(),

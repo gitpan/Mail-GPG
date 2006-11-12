@@ -1,8 +1,8 @@
 package Mail::GPG;
 
-# $Id: GPG.pm,v 1.21 2006/04/14 11:14:27 joern Exp $
+# $Id: GPG.pm,v 1.22 2006/11/12 09:35:57 joern Exp $
 
-$VERSION = "1.0.4";
+$VERSION = "1.0.5";
 
 use strict;
 use Carp;
@@ -994,7 +994,7 @@ sub decrypt {
         $output_stdout = "\n" . $output_stdout;
     }
 
-    my $dec_entity = $parser->parse_data( [$output_stdout] );
+    my $dec_entity = $parser->parse_data( $output_stdout );
 
     #-- Add headers from original entity
     if ( $dec_entity->head->as_string eq '' ) {
@@ -1896,7 +1896,7 @@ B<encoded> data.
 You can advice MIME::Parser to create an encoded entity
 (by default it creates decoded entities and encodes them on
 demand). You can activate this transparent encoding mode by
-settomg B<decode_bodies> attribute of MIME::Parser to 0
+setting B<decode_bodies> attribute of MIME::Parser to 0
 (it defaults to 1):
 
   $parser = MIME::Parser->new;
