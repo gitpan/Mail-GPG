@@ -1,6 +1,6 @@
 package Mail::GPG::Test;
 
-# $Id: Test.pm,v 1.5 2006/04/14 11:05:03 joern Exp $
+# $Id: Test.pm,v 1.6 2006/11/18 08:48:28 joern Exp $
 
 use strict;
 
@@ -104,8 +104,8 @@ sub get_test_mail_body {
 sub print_parse_entity {
     my $self = shift;
     my %par = @_;
-    my  ($entity, $modify, $decode_bodies) =
-    @par{'entity','modify','decode_bodies'};
+    my  ($entity, $modify) =
+    @par{'entity','modify'};
 
     my ( $fh, $file ) = File::Temp::tempfile(
         'mgpgXXXXXXXX',
@@ -128,12 +128,9 @@ sub print_parse_entity {
     }
 
     open( $fh, $file ) or die "can't read $file";
-    my $parser = MIME::Parser->new;
-    $parser->output_to_core(1);
-    eval { $parser->decode_bodies($decode_bodies) };
-    my $parsed_entity = $parser->parse($fh);
-    close $fh;
-
+    my $mg = $self->get_mail_gpg;
+    my $parsed_entity = $mg->parse( mail_fh => $fh );
+    close $fh;;
     return $parsed_entity;
 }
 
@@ -181,7 +178,6 @@ sub sign_test {
     my $parsed_entity = $self->print_parse_entity(
         entity        => $signed_entity,
         modify        => $invalid,
-        decode_bodies => ( $method =~ /armor/ ) || 0,
     );
 
     if ( $ENV{DUMPFILES} ) {
@@ -299,7 +295,6 @@ sub enc_test {
 
     my $parsed_entity = $self->print_parse_entity(
         entity        => $enc_entity,
-        decode_bodies => 1,
     );
 
     my ( $dec_key_id, $dec_key_mail )
@@ -440,7 +435,6 @@ sub big_test {
 
     my $parsed_entity = $self->print_parse_entity(
         entity        => $enc_entity,
-        decode_bodies => 1,
     );
 
     my ( $dec_key_id, $dec_key_mail )

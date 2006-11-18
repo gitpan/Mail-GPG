@@ -1,6 +1,13 @@
-$Id: Changes,v 1.17 2006/11/12 09:36:08 joern Exp $
+$Id: Changes,v 1.18 2006/11/18 08:49:21 joern Exp $
 
 Revision history and release notes for Mail::GPG.
+
+1.0.6 Sat Nov 18, 2006, joern
+    Bugfix:
+    - Mail::GPG->parse() missed setting MIME::Parser->output_to_core(1)
+      so temporary files were left. Thanks for the hint to
+      David Morel <david.morel AT amakuru.net>. As well changed
+      the test suite to make use of Mail::GPG->parse().
 
 1.0.5 Sun Nov 12, 2006, joern
     Bugfixes:

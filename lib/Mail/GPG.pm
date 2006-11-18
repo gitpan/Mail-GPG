@@ -1,8 +1,8 @@
 package Mail::GPG;
 
-# $Id: GPG.pm,v 1.22 2006/11/12 09:35:57 joern Exp $
+# $Id: GPG.pm,v 1.23 2006/11/18 08:49:05 joern Exp $
 
-$VERSION = "1.0.5";
+$VERSION = "1.0.6";
 
 use strict;
 use Carp;
@@ -1402,6 +1402,7 @@ sub parse {
     #-- First parse without body decoding, which is correct
     #-- for MIME messages
     $parser = MIME::Parser->new;
+    $parser->output_to_core(1);
     $parser->decode_bodies(0);
     $entity = $mail_fh
         ? $parser->parse($mail_fh)
