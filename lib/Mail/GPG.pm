@@ -1,8 +1,8 @@
 package Mail::GPG;
 
-# $Id: GPG.pm,v 1.23 2006/11/18 08:49:05 joern Exp $
+# $Id: GPG.pm,v 1.26 2011-08-03 08:53:43 joern Exp $
 
-$VERSION = "1.0.6";
+$VERSION = "1.0.7";
 
 use strict;
 use Carp;
@@ -12,7 +12,12 @@ use MIME::Parser;
 use Mail::GPG::Result;
 use Mail::Address;
 use File::Temp;
-use IO::Select;
+
+$Mail::GPG::SKIP_EVENT = $ENV{MAIL_GPG_SKIP_EVENT}
+    unless defined $Mail::GPG::SKIP_EVENT;
+
+my $HAS_EVENT = 0;
+$Mail::GPG::SKIP_EVENT || eval { use Event; $HAS_EVENT = 1 };
 
 sub get_default_key_id		{ shift->{default_key_id}		}
 sub get_default_passphrase	{ shift->{default_passphrase}		}
@@ -180,6 +185,11 @@ sub check_encryption {
 }
 
 sub perform_multiplexed_gpg_io {
+    $HAS_EVENT ? perform_multiplexed_gpg_io_event(@_) :
+                 perform_multiplexed_gpg_io_select(@_);
+}
+
+sub perform_multiplexed_gpg_io_select {
     my $self = shift;
     my %par  = @_;
     my  ($data_fh, $data_canonify, $stdin_fh, $stderr_fh) =
@@ -188,6 +198,8 @@ sub perform_multiplexed_gpg_io {
     @par{'stdout_fh','status_fh','stderr_sref','stdout_sref'};
     my  ($status_sref) =
     $par{'status_sref'};
+
+    require IO::Select;
 
     #-- perl < 5.6 compatibility: seek() and read() work
     #-- on native GLOB filehandle only, so dertmine type
@@ -269,6 +281,139 @@ sub perform_multiplexed_gpg_io {
             && eof($stdout_fh)
             && ( !$status_fh || eof($status_fh) );
     }
+
+    1;
+}
+
+sub perform_multiplexed_gpg_io_event {
+    my $self = shift;
+    my %par  = @_;
+    my  ($data_fh, $data_canonify, $stdin_fh, $stderr_fh) =
+    @par{'data_fh','data_canonify','stdin_fh','stderr_fh'};
+    my  ($stdout_fh, $status_fh, $stderr_sref, $stdout_sref) =
+    @par{'stdout_fh','status_fh','stderr_sref','stdout_sref'};
+    my  ($status_sref) =
+    $par{'status_sref'};
+
+    #-- perl < 5.6 compatibility: seek() and read() work
+    #-- on native GLOB filehandle only, so dertmine type
+    #-- of filehandle here
+    my $data_fh_glob = ref $data_fh eq 'GLOB';
+
+    #-- rewind the data filehandle
+    if ($data_fh_glob) {
+        seek $data_fh, 0, 0;
+    }
+    else {
+        $data_fh->seek( 0, 0 );
+    }
+
+    my $data_buffer = "";
+
+    my ($data_watcher, $stdin_watcher, $stderr_watcher,
+        $stdout_watcher, $status_watcher);
+
+    $data_watcher = Event->io (
+        fd   => $data_fh,
+        poll => 're',
+        desc => "data ($data_fh)",
+        cb   => sub {
+            my $buffer;
+            my $rc = sysread($data_fh, $buffer, 4096);
+
+            if ( $data_canonify ) {
+                #-- canonify it if requested
+                $buffer =~ s/\x0A/\x0D\x0A/g;
+                $buffer =~ s/\x0D\x0D\x0A/\x0D\x0A/g;
+            }
+            
+            $data_buffer .= $buffer;
+            
+            $stdin_watcher->start
+                if $data_buffer ne '' and !$stdin_watcher->is_active;
+
+            if ( !$rc ) {
+                $data_watcher->cancel;
+                $data_watcher = undef;
+                $stdin_watcher->cancel if $data_buffer eq '';
+                close $stdin_fh if $data_buffer eq '';
+                return;
+            }
+        },
+    );
+
+    $stdin_watcher = Event->io (
+        fd   => $stdin_fh,
+        poll => 'we',
+        cb   => sub {
+            my $written = syswrite($stdin_fh, $data_buffer, length($data_buffer));
+            if ( not defined $written ) {
+                $stdin_watcher->cancel;
+                close $stdin_fh;
+                $data_watcher->cancel;
+                $stderr_watcher->cancel;
+                $stdout_watcher->cancel;
+                $status_watcher->cancel;
+                Event::unloop();
+                return;
+            }
+            $data_buffer = substr($data_buffer, $written) if $written;
+            if ( $data_buffer eq '' && !$data_watcher ) {
+                $stdin_watcher->cancel;
+                close $stdin_fh;
+            }
+            elsif ( $data_buffer eq '' ) {
+                $stdin_watcher->stop;
+            }
+        },
+    );
+    $stdin_watcher->stop;
+
+    $stderr_watcher = Event->io (
+        fd   => $stderr_fh,
+        poll => 're',
+        cb   => sub {
+            my $rc = sysread(
+                $stderr_fh,
+                ${$stderr_sref},
+                4096,
+                length(${$stderr_sref})
+            );
+            $stderr_watcher->cancel unless $rc;
+        },
+    );
+
+    $stdout_watcher = Event->io (
+        fd   => $stdout_fh,
+        poll => 're',
+        cb   => sub {
+            my $rc = sysread(
+                $stdout_fh,
+                ${$stdout_sref},
+                4096,
+                length(${$stdout_sref})
+            );
+            $stdout_watcher->cancel unless $rc;
+        },
+    );
+
+    if ( $status_fh ) {
+        $status_watcher = Event->io (
+            fd   => $status_fh,
+            poll => 're',
+            cb   => sub {
+                my $rc = sysread(
+                    $status_fh,
+                    ${$status_sref},
+                    4096,
+                    length(${$status_sref})
+                );
+                $status_watcher->cancel unless $rc;
+            },
+        );
+    }
+
+    Event::loop();
 
     1;
 }
@@ -446,7 +591,7 @@ sub mime_sign {
 
     #-- check parameters
     die "No key_id set"     if $key_id     eq '';
-    die "No passphrase set" if $passphrase eq '';
+    die "No passphrase set" if not defined $passphrase;
 
     #-- build entity for signed version
     #-- (only the 2nd part with the signature data
@@ -485,7 +630,7 @@ sub mime_sign {
     $sign_part->print($data_fh);
 
     #-- perform I/O (multiplexed to prevent blocking)
-    my ( $output_stdout, $output_stderr );
+    my ( $output_stdout, $output_stderr ) = ("", "");
     $self->perform_multiplexed_gpg_io(
         data_fh       => $data_fh,
         data_canonify => 1,
@@ -564,7 +709,7 @@ sub mime_sign_encrypt {
 
     #-- check parameters
     die "No key_id set"     if not $_no_sign and $key_id     eq '';
-    die "No passphrase set" if not $_no_sign and $passphrase eq '';
+    die "No passphrase set" if not $_no_sign and not defined $passphrase;
 
     #-- build entity for encrypted version
     #-- (only the 2nd part with the encrypted data
@@ -621,7 +766,7 @@ sub mime_sign_encrypt {
     $encrypt_part->print($data_fh);
 
     #-- perform I/O (multiplexed to prevent blocking)
-    my ( $output_stdout, $output_stderr );
+    my ( $output_stdout, $output_stderr ) = ("", "");
     $self->perform_multiplexed_gpg_io(
         data_fh       => $data_fh,
         data_canonify => 1,
@@ -687,7 +832,7 @@ sub armor_sign {
 
     #-- check parameters
     die "No key_id set"     if $key_id     eq '';
-    die "No passphrase set" if $passphrase eq '';
+    die "No passphrase set" if not defined $passphrase;
     die "Entity has no body" if not $entity->bodyhandle;
 
     #-- check, if body content-transfer-encoding is 7bit safe
@@ -719,11 +864,14 @@ sub armor_sign {
     #-- execute gpg for signing
     my $pid = $gpg->clearsign( handles => $handles );
 
-    #-- access the decoded data in the body
-    my $data_fh = $entity->bodyhandle->open("r");
+    #-- put encoded entity data into temporary file
+    #-- (faster than in-memory operation)
+    my ( $data_fh, $data_file ) = File::Temp::tempfile();
+    unlink $data_file;
+    $entity->print($data_fh);
 
     #-- perform I/O (multiplexed to prevent blocking)
-    my ( $output_stdout, $output_stderr );
+    my ( $output_stdout, $output_stderr ) = ("", "");
     $self->perform_multiplexed_gpg_io(
         data_fh       => $data_fh,
         data_canonify => 1,
@@ -804,7 +952,7 @@ sub armor_sign_encrypt {
 
         #-- check parameters
         die "No key_id set"     if $key_id     eq '';
-        die "No passphrase set" if $passphrase eq '';
+        die "No passphrase set" if not defined $passphrase;
     }
 
     #-- check parameters
@@ -849,11 +997,14 @@ sub armor_sign_encrypt {
         $pid = $gpg->sign_and_encrypt( handles => $handles );
     }
 
-    #-- access the decoded data in the body
-    my $data_fh = $entity->bodyhandle->open("r");
+    #-- put encoded entity data into temporary file
+    #-- (faster than in-memory operation)
+    my ( $data_fh, $data_file ) = File::Temp::tempfile();
+    unlink $data_file;
+    $entity->print($data_fh);
 
     #-- perform I/O (multiplexed to prevent blocking)
-    my ( $output_stdout, $output_stderr );
+    my ( $output_stdout, $output_stderr ) = ("", "");
     $self->perform_multiplexed_gpg_io(
         data_fh       => $data_fh,
         data_canonify => 0,
@@ -954,7 +1105,7 @@ sub decrypt {
     print $data_fh $encrypted_text;
 
     #-- perform I/O (multiplexed to prevent blocking)
-    my ( $output_stdout, $output_stderr, $output_status );
+    my ( $output_stdout, $output_stderr, $output_status ) = ( "", "", "" );
 
     $self->perform_multiplexed_gpg_io(
         data_fh       => $data_fh,
@@ -1125,7 +1276,7 @@ sub verify {
     print $data_fh $signed_text;
 
     #-- perform I/O (multiplexed to prevent blocking)
-    my ( $output_stdout, $output_stderr, $output_status );
+    my ( $output_stdout, $output_stderr, $output_status ) = ( "", "", "" );
     $self->perform_multiplexed_gpg_io(
         data_fh       => $data_fh,
         data_canonify => 1,
@@ -1326,7 +1477,7 @@ sub get_decrypt_key {
     print $data_fh $encrypted_text;
 
     #-- perform I/O (multiplexed to prevent blocking)
-    my ( $output_stdout, $output_stderr );
+    my ( $output_stdout, $output_stderr ) = ( "", "" );
     $self->perform_multiplexed_gpg_io(
         data_fh       => $data_fh,
         data_canonify => 1,
@@ -1446,6 +1597,8 @@ sub get_key_trust {
     return $keys[0]->owner_trust;
 }
 
+1;
+
 __END__
 
 
@@ -1514,6 +1667,15 @@ that is OpenPGP MIME and traditional armor signed/encrypted mails.
   MIME-tools        >= 5.419
   MIME::QuotedPrint >= 2.20  (part of MIME-Base64 distribution)
   GnuPG::Interface  >= 0.33  (optionally with shipped patch applied)
+
+Since version 1.0.7 the Event module is loaded when present. This
+gives a small performance boost when handling big entities. If you
+like to fallback to the old IO::Select based behaviour set either
+
+  $Mail::GPG::SKIP_EVENT    = 1
+  $ENV{MAIL_GPG_SKIP_EVENT} = 1
+  
+before loading Mail::GPG.
 
 =head1 INSTALLATION
 

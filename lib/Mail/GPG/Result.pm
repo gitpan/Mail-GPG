@@ -1,6 +1,6 @@
 package Mail::GPG::Result;
 
-# $Id: Result.pm,v 1.8 2006/04/14 11:05:03 joern Exp $
+# $Id: Result.pm,v 1.9 2009-05-30 13:59:11 joern Exp $
 
 use strict;
 

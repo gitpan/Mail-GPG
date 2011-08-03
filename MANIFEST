@@ -6,6 +6,7 @@ t/01.base.t
 t/02.sign.t
 t/03.enc.t
 t/04.big.t
+t/05.multipart.t
 t/mgpg-test-key.sec.asc
 t/mgpg-test-key.pub.asc
 Makefile.PL

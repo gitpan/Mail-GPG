@@ -1,6 +1,18 @@
-$Id: Changes,v 1.18 2006/11/18 08:49:21 joern Exp $
+$Id: Changes,v 1.20 2011-08-03 08:53:29 joern Exp $
 
 Revision history and release notes for Mail::GPG.
+
+1.0.7 Wed Aug 3, 2011, joern
+    Features:
+    - Added support for empty passphrases. Thanks for the patch
+      to hlein AT korelogic DOT com.
+    - Improved gpg I/O performance and prevent rare blocking
+      cases by using the Event module (if installed).
+      
+      Note: you can force the old IO::Select based algorithm
+            by setting $Mail::GPG::SKIP_EVENT = 1 or
+            $ENV{MAIL_GPG_SKIP_EVENT} = 1 before loading
+            Mail::GPG.
 
 1.0.6 Sat Nov 18, 2006, joern
     Bugfix:

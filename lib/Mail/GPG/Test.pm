@@ -1,6 +1,6 @@
 package Mail::GPG::Test;
 
-# $Id: Test.pm,v 1.6 2006/11/18 08:48:28 joern Exp $
+# $Id: Test.pm,v 1.7 2009-05-30 13:56:20 joern Exp $
 
 use strict;
 
@@ -11,6 +11,8 @@ use Data::Dumper;
 use File::Path;
 
 use File::Temp qw(tempdir);
+
+my $TIMEIT = 0;
 
 my $has_encode = eval { require Encode; 1 };
 
@@ -423,22 +425,47 @@ sub big_test {
         Charset  => "iso-8859-1",
     );
 
+my ($start, $dur);
+if ( $TIMEIT ) {
+use Time::HiRes qw(time);
+$start = time();
+print "encrypt... ";
+}
     my $enc_entity = $mg->mime_sign_encrypt(
         entity     => $entity,
         recipients => [ $self->get_key_mail ],
     );
-
+if ($TIMEIT ) {
+$dur = time-$start;
+print "$dur !\n";
+}
     if ( not $mg->is_encrypted( entity => $enc_entity ) ) {
         ok( 0, "Entity not encrypted" );
         return;
     }
 
+if ($TIMEIT ) {
+$start = time();
+print "print_parse... ";
+}
     my $parsed_entity = $self->print_parse_entity(
         entity        => $enc_entity,
     );
+if ($TIMEIT ) {
+$dur = time-$start;
+print "$dur !\n";
+}
 
+if ($TIMEIT ) {
+$start = time();
+print "get_decrypt_key... ";
+}
     my ( $dec_key_id, $dec_key_mail )
         = $mg->get_decrypt_key( entity => $parsed_entity, );
+if ($TIMEIT ) {
+$dur = time-$start;
+print "$dur !\n";
+}
 
     if ($has_encode) {
         if (   $dec_key_id ne $self->get_key_id
@@ -460,9 +487,16 @@ sub big_test {
         }
     }
 
+if ($TIMEIT ) {
+print "decrypt... ";
+$start = time();
+}
     my ( $dec_entity, $result )
         = eval { $mg->decrypt( entity => $parsed_entity, ); };
-
+if ($TIMEIT ) {
+$dur = time-$start;
+print "$dur !\n";
+}
     if (   not $result->get_sign_ok
         or not $result->get_is_signed
         or not $result->get_sign_key_id eq $self->get_key_id
